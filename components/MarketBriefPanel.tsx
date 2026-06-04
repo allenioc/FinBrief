@@ -1,0 +1,127 @@
+import Link from "next/link";
+import type { MarketBriefData } from "@/lib/types";
+import { changeColorClass, formatPercent } from "@/lib/format";
+import { SentimentBadge } from "./SentimentBadge";
+
+/** Daily market briefing dashboard panel */
+export function MarketBriefPanel({
+  data,
+  updatedLabel,
+}: {
+  data: MarketBriefData;
+  updatedLabel?: string;
+}) {
+  return (
+    <div className="space-y-8">
+      <section className="fin-panel">
+        <p className="fin-label">Daily overview · {data.date}</p>
+        {updatedLabel && (
+          <p className="mt-1 text-sm text-fin-subtle">{updatedLabel}</p>
+        )}
+        <div className="mt-5 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="fin-section-title">{data.overallMoodLabel}</h2>
+            <p className="mt-3 max-w-2xl fin-body">{data.overallMoodSummary}</p>
+          </div>
+          <SentimentBadge sentiment={data.overallMood} />
+        </div>
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="rounded-panel border border-status-positive/20 bg-status-positive-bg/40 p-6">
+          <h3 className="text-sm font-bold text-status-positive">Top positive theme</h3>
+          <p className="mt-2 text-lg font-semibold text-fin-navy">{data.topPositiveTheme.title}</p>
+          <p className="mt-2 fin-body text-sm">{data.topPositiveTheme.description}</p>
+        </section>
+        <section className="rounded-panel border border-status-negative/20 bg-status-negative-bg/40 p-6">
+          <h3 className="text-sm font-bold text-status-negative">Top negative theme</h3>
+          <p className="mt-2 text-lg font-semibold text-fin-navy">{data.topNegativeTheme.title}</p>
+          <p className="mt-2 fin-body text-sm">{data.topNegativeTheme.description}</p>
+        </section>
+      </div>
+
+      <section className="fin-panel">
+        <h2 className="fin-section-title mb-5">Today&apos;s top 5 finance stories</h2>
+        <ol className="space-y-3">
+          {data.topStories.map((story, i) => (
+            <li
+              key={story.id}
+              className="flex gap-4 rounded-2xl border border-fin-border bg-fin-muted/40 p-4 transition-colors hover:border-fin-brand/40 hover:bg-fin-brand-soft/30"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-fin-brand text-sm font-bold text-white">
+                {i + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <Link href={`/brief/${story.id}`} className="font-semibold text-fin-navy hover:text-fin-brand">
+                  {story.title}
+                </Link>
+                <p className="mt-1 text-xs text-fin-subtle">{story.source}</p>
+              </div>
+              <SentimentBadge sentiment={story.sentiment} />
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="fin-panel">
+          <h2 className="fin-section-title mb-4">Key macro events</h2>
+          <ul className="space-y-3">
+            {data.keyMacroEvents.map((event) => (
+              <li
+                key={event}
+                className="flex gap-3 text-sm text-fin-text before:mt-2 before:h-1.5 before:w-1.5 before:shrink-0 before:rounded-full before:bg-fin-brand"
+              >
+                {event}
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section className="fin-panel">
+          <h2 className="fin-section-title mb-4">Sectors to watch</h2>
+          <ul className="space-y-4">
+            {data.sectorsToWatch.map((sector) => (
+              <li key={sector.name} className="border-b border-fin-border pb-4 last:border-0 last:pb-0">
+                <p className="font-semibold text-fin-navy">{sector.name}</p>
+                <p className="mt-1 text-sm text-fin-subtle">{sector.reason}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+
+      <section className="fin-panel">
+        <h2 className="fin-section-title mb-5">Index mood</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {data.indexMoods.map((index) => (
+            <div
+              key={index.symbol}
+              className="rounded-2xl border border-fin-border bg-fin-muted/30 p-4"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-mono text-sm font-bold text-fin-navy">{index.symbol}</p>
+                  <p className="text-xs text-fin-subtle">{index.name}</p>
+                </div>
+                <span
+                  className={`font-mono text-sm font-bold tabular-nums ${changeColorClass(index.dailyChangePercent)}`}
+                >
+                  {formatPercent(index.dailyChangePercent)}
+                </span>
+              </div>
+              <div className="mt-3">
+                <SentimentBadge sentiment={index.sentiment} />
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-fin-subtle">{index.note}</p>
+              <Link href={`/topic/${index.symbol.toLowerCase()}`} className="fin-link mt-3 inline-block text-xs">
+                View briefings →
+              </Link>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export const MarketBriefView = MarketBriefPanel;
