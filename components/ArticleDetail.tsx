@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
+import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
 import { formatDateTime } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleThumbnail } from "./ArticleThumbnail";
@@ -12,6 +13,7 @@ import { MarketImpactBadge } from "./MarketImpactBadge";
 import { PublisherNote } from "./PublisherNote";
 import { RecommendedNext } from "./RecommendedNext";
 import { SentimentBadge } from "./SentimentBadge";
+import { TooltipLabel } from "./Tooltip";
 
 function Section({
   title,
@@ -98,10 +100,16 @@ export function ArticleDetail({ article }: { article: Brief }) {
               <AssetTags assets={article.keyAffectedAssets} max={8} />
             </div>
 
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <SentimentBadge sentiment={article.sentiment} />
-              <MarketImpactBadge impact={article.marketImpact} />
-              <ConfidenceScore score={article.sentimentConfidence} />
+            <div className="mt-6 space-y-3">
+              <div className="flex flex-wrap items-center gap-3 text-xs text-fin-subtle">
+                <TooltipLabel label="Sentiment" content={ANALYSIS_LABEL_TOOLTIPS.sentiment} />
+                <TooltipLabel label="Market impact" content={ANALYSIS_LABEL_TOOLTIPS.marketImpact} />
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <SentimentBadge sentiment={article.sentiment} />
+                <MarketImpactBadge impact={article.marketImpact} />
+                <ConfidenceScore score={article.sentimentConfidence} />
+              </div>
             </div>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">

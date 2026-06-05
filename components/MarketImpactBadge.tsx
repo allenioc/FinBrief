@@ -1,4 +1,6 @@
 import type { MarketImpact } from "@/lib/types";
+import { IMPACT_TOOLTIPS } from "@/lib/analysis-tooltips";
+import { Tooltip } from "./Tooltip";
 
 const styles: Record<MarketImpact, string> = {
   low: "bg-status-neutral-bg text-status-neutral border-fin-border",
@@ -13,11 +15,19 @@ const labels: Record<MarketImpact, string> = {
 };
 
 export function MarketImpactBadge({ impact }: { impact: MarketImpact }) {
+  const label = labels[impact];
+
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${styles[impact]}`}
+    <Tooltip
+      label={`${label} explanation`}
+      content={IMPACT_TOOLTIPS[impact]}
+      triggerClassName="rounded-full"
     >
-      {labels[impact]}
-    </span>
+      <span
+        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${styles[impact]}`}
+      >
+        {label}
+      </span>
+    </Tooltip>
   );
 }

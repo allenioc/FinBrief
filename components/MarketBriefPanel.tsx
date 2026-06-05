@@ -1,7 +1,9 @@
 import Link from "next/link";
 import type { MarketBriefData } from "@/lib/types";
+import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
 import { changeColorClass, formatPercent } from "@/lib/format";
 import { SentimentBadge } from "./SentimentBadge";
+import { TooltipLabel } from "./Tooltip";
 
 /** Daily market briefing dashboard panel */
 export function MarketBriefPanel({
@@ -23,7 +25,10 @@ export function MarketBriefPanel({
             <h2 className="fin-section-title">{data.overallMoodLabel}</h2>
             <p className="mt-3 max-w-2xl fin-body">{data.overallMoodSummary}</p>
           </div>
-          <SentimentBadge sentiment={data.overallMood} />
+          <div className="space-y-2">
+            <TooltipLabel label="Sentiment" content={ANALYSIS_LABEL_TOOLTIPS.sentiment} />
+            <SentimentBadge sentiment={data.overallMood} />
+          </div>
         </div>
       </section>
 

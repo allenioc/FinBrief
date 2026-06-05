@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
+import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
 import { formatDateTime, formatRelativeTime } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleThumbnail } from "./ArticleThumbnail";
@@ -8,6 +9,7 @@ import { AssetTags } from "./AssetTags";
 import { ConfidenceScore } from "./ConfidenceScore";
 import { MarketImpactBadge } from "./MarketImpactBadge";
 import { SentimentBadge } from "./SentimentBadge";
+import { TooltipLabel } from "./Tooltip";
 
 export function ArticleCard({
   article,
@@ -92,6 +94,10 @@ export function ArticleCard({
         </p>
 
         <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-fin-subtle">
+            <TooltipLabel label="Sentiment" content={ANALYSIS_LABEL_TOOLTIPS.sentiment} />
+            <TooltipLabel label="Market impact" content={ANALYSIS_LABEL_TOOLTIPS.marketImpact} />
+          </div>
           <div className="flex flex-wrap gap-2">
             <SentimentBadge sentiment={article.sentiment} />
             <MarketImpactBadge impact={article.marketImpact} />

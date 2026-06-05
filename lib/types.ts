@@ -1,4 +1,4 @@
-export type Sentiment = "positive" | "neutral" | "negative";
+export type Sentiment = "positive" | "neutral" | "negative" | "mixed";
 export type MarketImpact = "low" | "medium" | "high";
 
 export type ArticleType =

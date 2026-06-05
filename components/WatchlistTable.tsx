@@ -1,8 +1,10 @@
 import Link from "next/link";
 import type { WatchlistFeedItem, WatchlistItemType } from "@/lib/types";
+import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
 import { MarketImpactBadge } from "./MarketImpactBadge";
 import { SentimentBadge } from "./SentimentBadge";
 import { TimeAgo } from "./TimeAgo";
+import { TooltipLabel } from "./Tooltip";
 
 const typeLabels: Record<WatchlistItemType, string> = {
   stock: "Stock",
@@ -29,8 +31,12 @@ export function WatchlistTable({ items }: { items: WatchlistFeedItem[] }) {
             <th className="px-5 py-3 fin-label">Symbol / topic</th>
             <th className="px-5 py-3 fin-label">Name</th>
             <th className="px-5 py-3 fin-label">Type</th>
-            <th className="px-5 py-3 fin-label">Sentiment</th>
-            <th className="px-5 py-3 fin-label">Impact</th>
+            <th className="px-5 py-3 fin-label">
+              <TooltipLabel label="Sentiment" content={ANALYSIS_LABEL_TOOLTIPS.sentiment} />
+            </th>
+            <th className="px-5 py-3 fin-label">
+              <TooltipLabel label="Market impact" content={ANALYSIS_LABEL_TOOLTIPS.marketImpact} />
+            </th>
             <th className="px-5 py-3 fin-label text-right">Total</th>
             <th className="px-5 py-3 fin-label">Last updated</th>
             <th className="px-5 py-3 fin-label text-right">New</th>
