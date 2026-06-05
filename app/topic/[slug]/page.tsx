@@ -11,13 +11,13 @@ interface TopicPageProps {
 
 export default async function TopicPage({ params }: TopicPageProps) {
   const { slug } = await params;
-  const profile = getTopicProfile(slug);
+  const profile = await getTopicProfile(slug);
 
   if (!profile) {
     notFound();
   }
 
-  const stories = getBriefsForTopic(slug);
+  const stories = await getBriefsForTopic(slug);
 
   return (
     <div className="mx-auto max-w-shell px-4 py-8 sm:px-6 lg:px-8 lg:py-10">

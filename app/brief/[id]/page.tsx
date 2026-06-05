@@ -13,7 +13,7 @@ interface BriefPageProps {
 
 export default async function BriefPage({ params }: BriefPageProps) {
   const { id } = await params;
-  const article = getBriefById(id);
+  const article = await getBriefById(id);
 
   if (!article) {
     notFound();

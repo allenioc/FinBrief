@@ -2,6 +2,8 @@ import type { Brief, BriefResponse } from "./types";
 import { MOCK_BRIEFS } from "./articles-data";
 import { fromTopicSlug, toTopicSlug } from "./slug";
 
+const liveBriefCache = new Map<string, Brief>();
+
 function normalizeQuery(q: string): string {
   return q.trim().toLowerCase();
 }
@@ -43,14 +45,32 @@ export function searchBriefs(query: string): Brief[] {
   return filtered.length > 0 ? filtered : MOCK_BRIEFS.slice(0, 3);
 }
 
-export function getBriefById(id: string): Brief | undefined {
-  return MOCK_BRIEFS.find((b) => b.id === id);
+function cacheBriefs(briefs: Brief[]) {
+  briefs.forEach((brief) => liveBriefCache.set(brief.id, brief));
 }
 
-export function getBriefsForTopic(slug: string): Brief[] {
+function localBriefById(id: string): Brief | undefined {
+  return liveBriefCache.get(id) ?? MOCK_BRIEFS.find((b) => b.id === id);
+}
+
+export async function getBriefById(id: string): Promise<Brief | undefined> {
+  const existing = localBriefById(id);
+  if (existing) return existing;
+
+  const queries = ["", "aapl", "tsla", "spy", "qqq", "inflation", "interest rates"];
+  for (const query of queries) {
+    const briefs = await getBriefs(query);
+    const match = briefs.find((brief) => brief.id === id);
+    if (match) return match;
+  }
+
+  return undefined;
+}
+
+export async function getBriefsForTopic(slug: string): Promise<Brief[]> {
   const symbol = fromTopicSlug(slug);
   const q = symbol.toLowerCase();
-  const results = MOCK_BRIEFS.filter(
+  const localResults = MOCK_BRIEFS.filter(
     (b) =>
       b.ticker.toLowerCase() === q ||
       b.topic.toLowerCase().includes(q) ||
@@ -58,15 +78,30 @@ export function getBriefsForTopic(slug: string): Brief[] {
       toTopicSlug(b.ticker) === slug ||
       toTopicSlug(b.topic) === slug
   );
-  return results.length > 0 ? results : searchBriefs(symbol);
+  const live = await getBriefs(symbol);
+  const merged = [...live];
+  localResults.forEach((item) => {
+    if (!merged.some((brief) => brief.id === item.id)) merged.push(item);
+  });
+  cacheBriefs(merged);
+  return merged.length > 0 ? merged : searchBriefs(symbol);
 }
 
 export async function fetchBriefsFromApi(query: string): Promise<BriefResponse | null> {
   try {
     const params = new URLSearchParams({ q: query || "" });
-    const res = await fetch(`/api/brief?${params}`, { cache: "no-store" });
+    params.set("limit", "20");
+    const localhostBase = `http://localhost:${process.env.PORT ?? "3000"}`;
+    const baseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ??
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+    const resolvedBase =
+      baseUrl || (typeof window === "undefined" ? localhostBase : "");
+    const url = resolvedBase ? `${resolvedBase}/api/news?${params}` : `/api/news?${params}`;
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) return null;
-    return (await res.json()) as BriefResponse;
+    const payload = (await res.json()) as { query: string; briefs: Brief[] };
+    return { query: payload.query, briefs: payload.briefs };
   } catch {
     return null;
   }
@@ -84,7 +119,10 @@ function isEnrichedBrief(brief: Brief): boolean {
 export async function getBriefs(query: string): Promise<Brief[]> {
   const api = await fetchBriefsFromApi(query);
   if (api?.briefs?.length && api.briefs.every(isEnrichedBrief)) {
+    cacheBriefs(api.briefs);
     return api.briefs;
   }
-  return searchBriefs(query);
+  const fallback = searchBriefs(query);
+  cacheBriefs(fallback);
+  return fallback;
 }

@@ -48,12 +48,12 @@ const TOPIC_OVERRIDES: Record<string, Partial<TopicProfile>> = {
   },
 };
 
-export function getTopicProfile(slug: string): TopicProfile | undefined {
+export async function getTopicProfile(slug: string): Promise<TopicProfile | undefined> {
   const watch = MOCK_WATCHLIST.find((w) => w.topicSlug === slug);
   const symbol = watch?.symbol ?? fromTopicSlug(slug);
   const name = watch?.name ?? symbol;
   const type = watch?.type ?? "topic";
-  const stories = getBriefsForTopic(slug);
+  const stories = await getBriefsForTopic(slug);
   const override = TOPIC_OVERRIDES[slug];
 
   if (!watch && stories.length === 0 && !override) {
