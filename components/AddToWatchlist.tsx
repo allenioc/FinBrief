@@ -2,16 +2,33 @@
 
 import { FormEvent, useState } from "react";
 import { WATCHLIST_SUGGESTIONS } from "@/lib/watchlist-data";
+import { createWatchlistItem } from "@/lib/watchlist-utils";
+import { useWatchlist } from "./WatchlistProvider";
 
 export function AddToWatchlist() {
   const [query, setQuery] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const { addFollow, removeFollow, isFollowing } = useWatchlist();
 
-  function addItem(symbol: string, name?: string) {
-    const label = name ? `${symbol} (${name})` : symbol;
-    setMessage(`${label} added to watchlist — demo only, not saved.`);
+  function addItem(symbol: string, name?: string, type?: (typeof WATCHLIST_SUGGESTIONS)[number]["type"]) {
+    const normalized = symbol.trim().toUpperCase();
+    if (!normalized) return;
+    const label = name ? `${normalized} (${name})` : normalized;
+    if (isFollowing(normalized)) {
+      removeFollow(normalized);
+      setMessage(`${label} removed from watchlist.`);
+    } else {
+      addFollow(
+        createWatchlistItem({
+          symbol: normalized,
+          name,
+          type,
+        })
+      );
+      setMessage(`${label} added to watchlist.`);
+    }
     setQuery("");
-    setTimeout(() => setMessage(null), 4000);
+    setTimeout(() => setMessage(null), 3200);
   }
 
   function onSubmit(e: FormEvent) {
@@ -47,10 +64,14 @@ export function AddToWatchlist() {
           <button
             key={item.symbol}
             type="button"
-            onClick={() => addItem(item.symbol, item.name)}
-            className="rounded-full border border-fin-border px-3 py-1 text-xs font-medium text-fin-navy hover:border-fin-brand hover:bg-fin-brand-soft"
+          onClick={() => addItem(item.symbol, item.name, item.type)}
+          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+            isFollowing(item.symbol)
+              ? "border-status-negative/30 bg-status-negative-bg text-status-negative hover:opacity-90"
+              : "border-fin-border text-fin-navy hover:border-fin-brand hover:bg-fin-brand-soft"
+          }`}
           >
-            {item.symbol}
+          {isFollowing(item.symbol) ? `Unfollow ${item.symbol}` : `Follow ${item.symbol}`}
           </button>
         ))}
       </div>

@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { AppShell } from "@/components/AppShell";
 import { TopBar } from "@/components/TopBar";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { WatchlistProvider } from "@/components/WatchlistProvider";
 import "./globals.css";
 
 const inter = Inter({
@@ -37,10 +38,12 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased">
         <ThemeProvider>
-          <AppShell>
-            <TopBar />
-            <main className="flex-1">{children}</main>
-          </AppShell>
+          <WatchlistProvider>
+            <AppShell>
+              <TopBar />
+              <main className="flex-1">{children}</main>
+            </AppShell>
+          </WatchlistProvider>
         </ThemeProvider>
       </body>
     </html>

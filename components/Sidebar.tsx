@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { BRAND, SIDEBAR_NAV } from "@/lib/theme";
+import { useWatchlist } from "./WatchlistProvider";
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
@@ -14,6 +15,22 @@ function isActive(pathname: string, href: string): boolean {
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { items } = useWatchlist();
+  const followingItems = items.slice(0, 8).map((item) => ({
+    label: item.symbol,
+    href: `/topic/${item.topicSlug}`,
+  }));
+  const navSections = SIDEBAR_NAV.map((section) =>
+    section.label === "Following"
+      ? {
+          ...section,
+          items:
+            followingItems.length > 0
+              ? followingItems
+              : [{ label: "Add symbols", href: "/watchlist" }],
+        }
+      : section
+  );
 
   return (
     <aside className="flex h-full w-[260px] shrink-0 flex-col border-r border-fin-border bg-fin-sidebar">
@@ -39,7 +56,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
-        {SIDEBAR_NAV.map((section) => (
+        {navSections.map((section) => (
           <div key={section.label} className="mb-5">
             <p className="mb-2 px-3 fin-label">{section.label}</p>
             <ul className="space-y-0.5">

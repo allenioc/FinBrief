@@ -3,12 +3,14 @@ import type { Brief } from "@/lib/types";
 import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
 import { formatDateTime } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
+import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
 import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
 import { AssetTags } from "./AssetTags";
 import { ConfidenceScore } from "./ConfidenceScore";
 import { DataSnapshotPanel } from "./DataSnapshot";
 import { Disclaimer } from "./Disclaimer";
+import { FollowToggleButton } from "./FollowToggleButton";
 import { MarketImpactBadge } from "./MarketImpactBadge";
 import { PublisherNote } from "./PublisherNote";
 import { RecommendedNext } from "./RecommendedNext";
@@ -45,6 +47,7 @@ function Section({
 
 export function ArticleDetail({ article }: { article: Brief }) {
   const fallbackLabel = article.ticker !== "—" ? article.ticker : article.topic;
+  const watchlistItem = watchlistItemFromBrief(article);
 
   return (
     <div className="space-y-8">
@@ -121,6 +124,7 @@ export function ArticleDetail({ article }: { article: Brief }) {
               >
                 Read full article at source ↗
               </a>
+              <FollowToggleButton item={watchlistItem} className="fin-btn-secondary" />
             </div>
           </div>
         </div>

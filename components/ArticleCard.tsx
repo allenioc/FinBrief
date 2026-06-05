@@ -3,10 +3,12 @@ import type { Brief } from "@/lib/types";
 import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
 import { formatDateTime, formatRelativeTime } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
+import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
 import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
 import { AssetTags } from "./AssetTags";
 import { ConfidenceScore } from "./ConfidenceScore";
+import { FollowToggleButton } from "./FollowToggleButton";
 import { MarketImpactBadge } from "./MarketImpactBadge";
 import { SentimentBadge } from "./SentimentBadge";
 import { TooltipLabel } from "./Tooltip";
@@ -20,6 +22,7 @@ export function ArticleCard({
 }) {
   const fallbackLabel = article.ticker !== "—" ? article.ticker : article.topic;
   const isHero = variant === "hero";
+  const watchlistItem = watchlistItemFromBrief(article);
 
   return (
     <article
@@ -106,9 +109,12 @@ export function ArticleCard({
           <AssetTags assets={article.keyAffectedAssets} max={isHero ? 6 : 4} />
         </div>
 
-        <Link href={`/brief/${article.id}`} className="fin-link text-sm font-semibold">
-          Read FinBrief summary →
-        </Link>
+        <div className="flex items-center justify-between gap-3">
+          <Link href={`/brief/${article.id}`} className="fin-link text-sm font-semibold">
+            Read FinBrief summary →
+          </Link>
+          <FollowToggleButton item={watchlistItem} />
+        </div>
       </div>
     </article>
   );

@@ -1,23 +1,42 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { WatchlistFeedItem } from "@/lib/types";
 import {
   getInitialWatchlistFeedMeta,
-  getInitialWatchlistItems,
   mockRefreshDelay,
   refreshWatchlistFeed,
+  toWatchlistFeedItems,
 } from "@/lib/mock-refresh";
 import { AddToWatchlist } from "./AddToWatchlist";
 import { FeedStatusBar } from "./FeedStatusBar";
 import { RefreshFeedButton } from "./RefreshFeedButton";
+import { useWatchlist } from "./WatchlistProvider";
 import { WatchlistSummary } from "./WatchlistSummary";
 import { WatchlistTable } from "./WatchlistTable";
 
 export function WatchlistClient() {
-  const [items, setItems] = useState<WatchlistFeedItem[]>(getInitialWatchlistItems);
+  const { items: followedItems } = useWatchlist();
+  const [items, setItems] = useState<WatchlistFeedItem[]>(() => toWatchlistFeedItems(followedItems));
   const [meta, setMeta] = useState(getInitialWatchlistFeedMeta);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setItems((prev) => {
+      const prevById = new Map(prev.map((item) => [item.id, item]));
+      return toWatchlistFeedItems(followedItems).map((next) => {
+        const existing = prevById.get(next.id);
+        return existing
+          ? {
+              ...existing,
+              ...next,
+              feedLastUpdatedAt: existing.feedLastUpdatedAt,
+              newStoriesCount: existing.newStoriesCount,
+            }
+          : next;
+      });
+    });
+  }, [followedItems]);
 
   const handleRefresh = useCallback(async () => {
     setLoading(true);

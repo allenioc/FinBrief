@@ -7,8 +7,9 @@ import { PublisherNote } from "@/components/PublisherNote";
 import { Disclaimer } from "@/components/Disclaimer";
 import { UpdateScheduleFooter } from "@/components/UpdateScheduleFooter";
 import { SearchBar } from "@/components/SearchBar";
+import { WatchlistHighlights } from "@/components/WatchlistHighlights";
 import { getBriefs } from "@/lib/briefs";
-import { MOCK_WATCHLIST, TRENDING_SEARCHES } from "@/lib/mock-data";
+import { TRENDING_SEARCHES } from "@/lib/mock-data";
 import { BRAND } from "@/lib/theme";
 
 interface HomeProps {
@@ -66,21 +67,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
             Manage watchlist →
           </Link>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {MOCK_WATCHLIST.slice(0, 8).map((item) => (
-            <Link
-              key={item.id}
-              href={`/topic/${item.topicSlug}`}
-              className="fin-card fin-card-hover p-4"
-            >
-              <span className="font-mono text-sm font-bold text-fin-brand">{item.symbol}</span>
-              <p className="mt-1 text-xs text-fin-subtle line-clamp-2">{item.name}</p>
-              <p className="mt-2 text-xs font-medium text-fin-subtle">
-                {item.relatedStoriesCount} stories
-              </p>
-            </Link>
-          ))}
-        </div>
+        <WatchlistHighlights />
       </section>
 
       <div className="space-y-4">

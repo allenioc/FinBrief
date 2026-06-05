@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import type { WatchlistFeedItem, WatchlistItemType } from "@/lib/types";
 import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
@@ -5,6 +7,7 @@ import { MarketImpactBadge } from "./MarketImpactBadge";
 import { SentimentBadge } from "./SentimentBadge";
 import { TimeAgo } from "./TimeAgo";
 import { TooltipLabel } from "./Tooltip";
+import { useWatchlist } from "./WatchlistProvider";
 
 const typeLabels: Record<WatchlistItemType, string> = {
   stock: "Stock",
@@ -40,6 +43,7 @@ export function WatchlistTable({ items }: { items: WatchlistFeedItem[] }) {
             <th className="px-5 py-3 fin-label text-right">Total</th>
             <th className="px-5 py-3 fin-label">Last updated</th>
             <th className="px-5 py-3 fin-label text-right">New</th>
+            <th className="px-5 py-3 fin-label text-right">Action</th>
             <th className="px-5 py-3 fin-label text-right">Brief</th>
           </tr>
         </thead>
@@ -82,6 +86,9 @@ export function WatchlistTable({ items }: { items: WatchlistFeedItem[] }) {
                 </span>
               </td>
               <td className="px-5 py-4 text-right">
+                <RemoveFollowButton symbol={item.symbol} />
+              </td>
+              <td className="px-5 py-4 text-right">
                 <Link
                   href={`/topic/${item.topicSlug}`}
                   className="fin-link text-xs font-bold"
@@ -94,5 +101,20 @@ export function WatchlistTable({ items }: { items: WatchlistFeedItem[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function RemoveFollowButton({ symbol }: { symbol: string }) {
+  const { removeFollow } = useWatchlist();
+
+  return (
+    <button
+      type="button"
+      onClick={() => removeFollow(symbol)}
+      className="rounded-full border border-status-negative/30 bg-status-negative-bg px-3 py-1 text-xs font-semibold text-status-negative hover:opacity-90"
+      aria-label={`Unfollow ${symbol}`}
+    >
+      Remove
+    </button>
   );
 }

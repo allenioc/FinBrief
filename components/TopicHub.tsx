@@ -1,7 +1,9 @@
 import Link from "next/link";
 import type { Brief, TopicProfile } from "@/lib/types";
+import { watchlistItemFromTopic } from "@/lib/watchlist-utils";
 import { ArticleCard } from "./ArticleCard";
 import { DataSnapshotPanel } from "./DataSnapshot";
+import { FollowToggleButton } from "./FollowToggleButton";
 import { MarketImpactBadge } from "./MarketImpactBadge";
 import { RecommendedNext } from "./RecommendedNext";
 import { SentimentBadge } from "./SentimentBadge";
@@ -21,6 +23,8 @@ export function TopicHub({
   profile: TopicProfile;
   stories: Brief[];
 }) {
+  const watchlistItem = watchlistItemFromTopic(profile);
+
   return (
     <div className="space-y-8">
       <header className="fin-panel">
@@ -37,6 +41,9 @@ export function TopicHub({
         <p className="mt-3 text-sm text-fin-subtle">
           {stories.length} related {stories.length === 1 ? "briefing" : "briefings"}
         </p>
+        <div className="mt-4">
+          <FollowToggleButton item={watchlistItem} />
+        </div>
       </header>
 
       <div className="grid gap-8 lg:grid-cols-[1fr_300px]">
