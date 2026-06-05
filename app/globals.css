@@ -70,6 +70,12 @@ body {
   min-height: 100vh;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 @layer components {
   .fin-card {
     @apply rounded-[22px] border border-fin-border bg-fin-surface;

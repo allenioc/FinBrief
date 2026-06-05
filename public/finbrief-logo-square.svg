@@ -1,0 +1,20 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="finbGradient" x1="26" y1="226" x2="210" y2="34" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#00163F" />
+      <stop offset="1" stop-color="#1E66FF" />
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="#F8FAFC" />
+  <rect x="36" y="128" width="42" height="88" rx="10" fill="url(#finbGradient)" />
+  <rect x="88" y="90" width="42" height="126" rx="10" fill="url(#finbGradient)" />
+  <rect x="140" y="58" width="42" height="158" rx="10" fill="url(#finbGradient)" />
+  <path
+    d="M42 202L82 168L104 184L164 120"
+    stroke="#F8FAFC"
+    stroke-width="12"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path d="M154 119H178V143" stroke="#F8FAFC" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

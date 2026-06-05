@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { BRAND, SIDEBAR_NAV } from "@/lib/theme";
 
@@ -18,8 +19,15 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     <aside className="flex h-full w-[260px] shrink-0 flex-col border-r border-fin-border bg-fin-sidebar">
       <div className="border-b border-fin-border px-5 py-5">
         <Link href="/" className="flex items-center gap-3" onClick={onNavigate}>
-          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-fin-brand text-sm font-bold text-white shadow-sm">
-            FB
+          <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl border border-fin-border bg-fin-surface shadow-sm">
+            <Image
+              src="/finbrief-logo-square.svg"
+              alt="FinBrief logo"
+              width={40}
+              height={40}
+              className="h-full w-full object-cover"
+              priority
+            />
           </span>
           <div>
             <span className="block text-lg font-bold tracking-tight text-fin-navy">
