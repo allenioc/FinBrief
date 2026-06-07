@@ -31,16 +31,17 @@ export function DashboardFeed({
   initialBriefs: Brief[];
   query: string;
 }) {
-  const [briefs, setBriefs] = useState(initialBriefs);
+  const [briefs, setBriefs] = useState<Brief[]>([]);
   const [meta, setMeta] = useState(getInitialArticleFeedMeta);
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(12);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
   const [providerLabel, setProviderLabel] = useState<string>("mock");
   const [providerStats, setProviderStats] = useState<Array<{ provider: string; count: number }>>([]);
   const [timeWindow, setTimeWindow] = useState<"breaking" | "today" | "week">("today");
+  const [hasLoadedApi, setHasLoadedApi] = useState(false);
   const { items: watchlistItems } = useWatchlist();
   const isRefreshingRef = useRef(false);
   const lastRefreshAtRef = useRef(Date.now());
@@ -68,7 +69,15 @@ export function DashboardFeed({
           provider?: string;
           providerStats?: Array<{ provider: string; count: number }>;
         };
-        setBriefs(payload.briefs);
+        const provider = payload.provider ?? "mock";
+        const apiBriefs = payload.briefs ?? [];
+        const nextBriefs =
+          provider === "newsapi"
+            ? apiBriefs
+            : apiBriefs.length > 0
+              ? apiBriefs
+              : initialBriefs;
+        setBriefs(nextBriefs);
         setMeta((prev) => ({
           refreshCount: prev.refreshCount + 1,
           lastUpdatedAt: payload.lastUpdatedAt ?? new Date().toISOString(),
@@ -76,8 +85,9 @@ export function DashboardFeed({
         setVisibleCount(12);
         setPage(1);
         setHasMore(Boolean(payload.hasMore));
-        setProviderLabel(payload.provider ?? "mock");
+        setProviderLabel(provider);
         setProviderStats(payload.providerStats ?? []);
+        setHasLoadedApi(true);
         lastRefreshAtRef.current = Date.now();
       }
     } finally {
@@ -87,7 +97,7 @@ export function DashboardFeed({
       }
       isRefreshingRef.current = false;
     }
-  }, [activeQuery]);
+  }, [activeQuery, initialBriefs]);
 
   const handleRefresh = useCallback(async () => {
     await refreshFeed("manual");
@@ -99,8 +109,9 @@ export function DashboardFeed({
 
   useEffect(() => {
     setPage(1);
-    setHasMore(true);
+    setHasMore(false);
     setVisibleCount(12);
+    setHasLoadedApi(false);
   }, [activeQuery]);
 
   const handleLoadMore = useCallback(async () => {
@@ -258,6 +269,18 @@ export function DashboardFeed({
           ? `Live feed: ${formatProviderLabel(providerLabel)}`
           : "Mock fallback"}
       </div>
+      <div className="rounded-xl border border-fin-border bg-fin-muted/60 px-3 py-2 text-xs text-fin-subtle">
+        provider: <span className="font-semibold text-fin-navy">{providerLabel}</span>
+        {" · "}
+        articleCount: <span className="font-semibold text-fin-navy">{briefs.length}</span>
+        {" · "}
+        fetchedAt: <span className="font-semibold text-fin-navy">{meta.lastUpdatedAt}</span>
+        {" · "}
+        firstHeadline:{" "}
+        <span className="font-semibold text-fin-navy">
+          {briefs[0]?.headline ?? "n/a"}
+        </span>
+      </div>
       {providerStats.length > 0 && (
         <p className="text-xs text-fin-subtle">
           Provider diagnostics:{" "}
@@ -286,7 +309,11 @@ export function DashboardFeed({
         ))}
       </div>
 
-      {displayed.length === 0 ? (
+      {!hasLoadedApi ? (
+        <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
+          Loading live stories from /api/news...
+        </p>
+      ) : displayed.length === 0 ? (
         <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
           No briefings found. Try AAPL, TSLA, SPY, QQQ, inflation, or interest rates. Mock data will be used when live providers are unavailable.
         </p>
