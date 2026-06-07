@@ -90,7 +90,8 @@ export async function getBriefsForTopic(slug: string): Promise<Brief[]> {
 export async function fetchBriefsFromApi(query: string): Promise<BriefResponse | null> {
   try {
     const params = new URLSearchParams({ q: query || "" });
-    params.set("limit", "20");
+    params.set("limit", "24");
+    params.set("page", "1");
     const localhostBase = `http://localhost:${process.env.PORT ?? "3000"}`;
     const baseUrl =
       process.env.NEXT_PUBLIC_SITE_URL ??

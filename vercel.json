@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/prewarm-news",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/prewarm-news",
+      "schedule": "0 0 * * *"
+    }
+  ]
+}

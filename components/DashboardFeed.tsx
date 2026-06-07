@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Brief } from "@/lib/types";
 import {
   getInitialArticleFeedMeta,
@@ -10,6 +10,16 @@ import { ArticleCard } from "./ArticleCard";
 import { FeedStatusBar } from "./FeedStatusBar";
 import { RefreshFeedButton } from "./RefreshFeedButton";
 import { useWatchlist } from "./WatchlistProvider";
+
+const AUTO_REFRESH_MS = 10 * 60 * 1000;
+const FOCUS_REFRESH_COOLDOWN_MS = 2 * 60 * 1000;
+
+function msUntilNextLocalMidnight(): number {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(24, 0, 0, 0);
+  return Math.max(1000, next.getTime() - now.getTime());
+}
 
 export function DashboardFeed({
   initialBriefs,
@@ -23,30 +33,153 @@ export function DashboardFeed({
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(12);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [providerLabel, setProviderLabel] = useState<string>("mock");
+  const [providerStats, setProviderStats] = useState<Array<{ provider: string; count: number }>>([]);
+  const [timeWindow, setTimeWindow] = useState<"breaking" | "today" | "week">("today");
   const { items: watchlistItems } = useWatchlist();
+  const isRefreshingRef = useRef(false);
+  const lastRefreshAtRef = useRef(Date.now());
 
-  const handleRefresh = useCallback(async () => {
+  const refreshFeed = useCallback(async (reason: "manual" | "auto" | "focus" | "midnight") => {
+    if (isRefreshingRef.current) return;
+    isRefreshingRef.current = true;
     setLoading(true);
-    setStatusMessage("Refreshing live briefings…");
+    if (reason === "manual") {
+      setStatusMessage("Refreshing live briefings…");
+    }
+
     const params = new URLSearchParams();
     if (query.trim()) params.set("q", query.trim());
-    params.set("limit", "20");
-    const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
-    if (response.ok) {
-      const payload = (await response.json()) as { briefs: Brief[]; lastUpdatedAt: string };
-      setBriefs(payload.briefs);
-      setMeta({
-        refreshCount: meta.refreshCount + 1,
-        lastUpdatedAt: payload.lastUpdatedAt ?? new Date().toISOString(),
-      });
-      setVisibleCount(12);
+    params.set("limit", "24");
+    params.set("page", "1");
+    try {
+      const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
+      if (response.ok) {
+        const payload = (await response.json()) as {
+          briefs: Brief[];
+          lastUpdatedAt: string;
+          hasMore?: boolean;
+          provider?: string;
+          providerStats?: Array<{ provider: string; count: number }>;
+        };
+        setBriefs(payload.briefs);
+        setMeta((prev) => ({
+          refreshCount: prev.refreshCount + 1,
+          lastUpdatedAt: payload.lastUpdatedAt ?? new Date().toISOString(),
+        }));
+        setVisibleCount(12);
+        setPage(1);
+        setHasMore(Boolean(payload.hasMore));
+        setProviderLabel(payload.provider ?? "mock");
+        setProviderStats(payload.providerStats ?? []);
+        lastRefreshAtRef.current = Date.now();
+      }
+    } finally {
+      setLoading(false);
+      if (reason === "manual") {
+        setStatusMessage(null);
+      }
+      isRefreshingRef.current = false;
     }
-    setLoading(false);
-    setStatusMessage(null);
-  }, [query, meta.refreshCount]);
+  }, [query]);
+
+  const handleRefresh = useCallback(async () => {
+    await refreshFeed("manual");
+  }, [refreshFeed]);
+
+  useEffect(() => {
+    setPage(1);
+    setHasMore(true);
+    setVisibleCount(12);
+  }, [query]);
+
+  const handleLoadMore = useCallback(async () => {
+    if (visibleCount < briefs.length) {
+      setVisibleCount((prev) => Math.min(briefs.length, prev + 6));
+      return;
+    }
+    if (!hasMore || isRefreshingRef.current) return;
+
+    setLoading(true);
+    const nextPage = page + 1;
+    const params = new URLSearchParams();
+    if (query.trim()) params.set("q", query.trim());
+    params.set("limit", "24");
+    params.set("page", String(nextPage));
+    try {
+      const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = (await response.json()) as {
+        briefs: Brief[];
+        hasMore?: boolean;
+        provider?: string;
+        providerStats?: Array<{ provider: string; count: number }>;
+      };
+      setBriefs((prev) => {
+        const existing = new Set(prev.map((item) => item.id));
+        const additions = payload.briefs.filter((item) => !existing.has(item.id));
+        return [...prev, ...additions];
+      });
+      setVisibleCount((prev) => prev + 12);
+      setPage(nextPage);
+      setHasMore(Boolean(payload.hasMore));
+      if (payload.provider) setProviderLabel(payload.provider);
+      if (payload.providerStats) setProviderStats(payload.providerStats);
+    } finally {
+      setLoading(false);
+    }
+  }, [briefs.length, hasMore, page, query, visibleCount]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      refreshFeed("auto");
+    }, AUTO_REFRESH_MS);
+    let midnightTimer: number | undefined;
+
+    const scheduleMidnightRefresh = () => {
+      midnightTimer = window.setTimeout(async () => {
+        await refreshFeed("midnight");
+        scheduleMidnightRefresh();
+      }, msUntilNextLocalMidnight());
+    };
+    scheduleMidnightRefresh();
+
+    const handleFocusRefresh = () => {
+      const elapsed = Date.now() - lastRefreshAtRef.current;
+      if (elapsed >= FOCUS_REFRESH_COOLDOWN_MS) {
+        refreshFeed("focus");
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        handleFocusRefresh();
+      }
+    };
+
+    window.addEventListener("focus", handleFocusRefresh);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.clearInterval(interval);
+      if (midnightTimer) window.clearTimeout(midnightTimer);
+      window.removeEventListener("focus", handleFocusRefresh);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [refreshFeed]);
 
   const watchlistSymbols = watchlistItems.map((item) => item.symbol.toLowerCase());
-  const displayed = briefs.slice(0, visibleCount);
+  const now = Date.now();
+  const timeFiltered = briefs.filter((brief) => {
+    const ageMs = now - new Date(brief.publishedAt).getTime();
+    if (timeWindow === "breaking") return ageMs <= 6 * 60 * 60 * 1000;
+    if (timeWindow === "today") return ageMs <= 24 * 60 * 60 * 1000;
+    return ageMs <= 7 * 24 * 60 * 60 * 1000;
+  });
+  const scoped = timeFiltered.length > 0 ? timeFiltered : briefs;
+  const displayed = scoped.slice(0, visibleCount);
   const topStories = displayed.slice(0, 4);
   const marketStories = displayed.filter(
     (brief) => brief.articleType === "market news" || brief.articleType === "macro news"
@@ -99,6 +232,39 @@ export function DashboardFeed({
           <>Latest briefings across equities, ETFs, and macro topics</>
         )}
       </p>
+      <p className="text-xs text-fin-subtle">
+        Auto-updates every 10 minutes, on tab return, and daily at 12:00 AM local time.
+      </p>
+      <p className="text-xs text-fin-subtle">
+        Data source: {providerLabel === "mock" ? "Mock fallback" : `Live (${providerLabel})`}
+      </p>
+      {providerStats.length > 0 && (
+        <p className="text-xs text-fin-subtle">
+          Provider diagnostics:{" "}
+          {providerStats.map((entry) => `${entry.provider} ${entry.count}`).join(" • ")}
+        </p>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {[
+          { id: "breaking", label: "Breaking" },
+          { id: "today", label: "Today" },
+          { id: "week", label: "This week" },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setTimeWindow(tab.id as "breaking" | "today" | "week")}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+              timeWindow === tab.id
+                ? "bg-fin-brand text-white"
+                : "border border-fin-border bg-fin-surface text-fin-navy hover:bg-fin-muted"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       {displayed.length === 0 ? (
         <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
@@ -128,14 +294,15 @@ export function DashboardFeed({
         </div>
       )}
 
-      {visibleCount < briefs.length && (
+      {(visibleCount < briefs.length || hasMore) && (
         <div className="flex justify-center">
           <button
             type="button"
             className="fin-btn-secondary"
-            onClick={() => setVisibleCount((prev) => Math.min(briefs.length, prev + 6))}
+            onClick={handleLoadMore}
+            disabled={loading}
           >
-            Load more stories
+            {loading ? "Loading..." : "Load more stories"}
           </button>
         </div>
       )}
