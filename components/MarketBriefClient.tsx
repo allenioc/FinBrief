@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import type { MarketBriefData } from "@/lib/types";
+import { useCallback, useEffect, useState } from "react";
+import type { Brief, MarketBriefData } from "@/lib/types";
 import {
   getInitialMarketBriefMeta,
-  mockRefreshDelay,
-  refreshMarketBrief,
 } from "@/lib/mock-refresh";
+import { buildMarketBriefFromBriefs } from "@/lib/market-brief-live";
+import { formatProviderLabel, isLiveProvider } from "@/lib/news-source";
 import { formatLastUpdated, formatTodayAt } from "@/lib/date-format";
 import { FeedStatusBar } from "./FeedStatusBar";
 import { MarketBriefPanel } from "./MarketBriefPanel";
@@ -17,15 +17,43 @@ export function MarketBriefClient({ initialData }: { initialData: MarketBriefDat
   const [data, setData] = useState(initialData);
   const [meta, setMeta] = useState(getInitialMarketBriefMeta);
   const [loading, setLoading] = useState(false);
+  const [provider, setProvider] = useState<string>("mock");
+
+  const fetchLiveBrief = useCallback(async () => {
+    setLoading(true);
+    const params = new URLSearchParams({
+      q: "",
+      limit: "24",
+      page: "1",
+    });
+    try {
+      const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = (await response.json()) as {
+        briefs: Brief[];
+        provider?: string;
+        lastUpdatedAt?: string;
+      };
+      if (payload.briefs?.length > 0) {
+        setData(buildMarketBriefFromBriefs(payload.briefs));
+      }
+      setProvider(payload.provider ?? "mock");
+      setMeta((prev) => ({
+        refreshCount: prev.refreshCount + 1,
+        lastUpdatedAt: payload.lastUpdatedAt ?? new Date().toISOString(),
+      }));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLiveBrief();
+  }, [fetchLiveBrief]);
 
   const handleRefresh = useCallback(async () => {
-    setLoading(true);
-    await mockRefreshDelay(1000);
-    const result = refreshMarketBrief(meta.refreshCount);
-    setData(result.data);
-    setMeta(result.meta);
-    setLoading(false);
-  }, [meta.refreshCount]);
+    await fetchLiveBrief();
+  }, [fetchLiveBrief]);
 
   return (
     <div className="space-y-6">
@@ -40,16 +68,26 @@ export function MarketBriefClient({ initialData }: { initialData: MarketBriefDat
         <RefreshFeedButton
           onClick={handleRefresh}
           loading={loading}
-          loadingMessage="Refreshing market brief…"
+          loadingMessage="Refreshing live market brief…"
           label="Refresh market brief"
         />
+      </div>
+
+      <div
+        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+          isLiveProvider(provider)
+            ? "bg-status-positive-bg text-status-positive"
+            : "bg-status-warning-bg text-status-warning"
+        }`}
+      >
+        {isLiveProvider(provider) ? `Live feed: ${formatProviderLabel(provider)}` : "Mock fallback"}
       </div>
 
       <FeedStatusBar lastUpdatedAt={meta.lastUpdatedAt} />
 
       {loading && (
         <p className="text-sm font-medium text-fin-brand" role="status">
-          Refreshing market brief…
+          Refreshing market brief from /api/news…
         </p>
       )}
 

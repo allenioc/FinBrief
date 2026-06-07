@@ -10,7 +10,7 @@ export default function MarketBriefPage() {
       <PageHeader
         eyebrow="Daily Market Brief"
         title="Your morning market snapshot"
-        description="Top stories, overall mood, macro events, and index performance — mock data with simulated refresh for educational context."
+        description="Top stories, overall mood, macro events, and index performance sourced from /api/news with mock fallback when live providers are unavailable."
       />
 
       <MarketBriefClient initialData={MARKET_BRIEF} />

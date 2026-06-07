@@ -5,6 +5,7 @@ import type { Brief } from "@/lib/types";
 import {
   getInitialArticleFeedMeta,
 } from "@/lib/mock-refresh";
+import { formatProviderLabel, isLiveProvider } from "@/lib/news-source";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleCard } from "./ArticleCard";
 import { FeedStatusBar } from "./FeedStatusBar";
@@ -87,6 +88,10 @@ export function DashboardFeed({
 
   const handleRefresh = useCallback(async () => {
     await refreshFeed("manual");
+  }, [refreshFeed]);
+
+  useEffect(() => {
+    refreshFeed("auto");
   }, [refreshFeed]);
 
   useEffect(() => {
@@ -235,9 +240,17 @@ export function DashboardFeed({
       <p className="text-xs text-fin-subtle">
         Auto-updates every 10 minutes, on tab return, and daily at 12:00 AM local time.
       </p>
-      <p className="text-xs text-fin-subtle">
-        Data source: {providerLabel === "mock" ? "Mock fallback" : `Live (${providerLabel})`}
-      </p>
+      <div
+        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+          isLiveProvider(providerLabel)
+            ? "bg-status-positive-bg text-status-positive"
+            : "bg-status-warning-bg text-status-warning"
+        }`}
+      >
+        {isLiveProvider(providerLabel)
+          ? `Live feed: ${formatProviderLabel(providerLabel)}`
+          : "Mock fallback"}
+      </div>
       {providerStats.length > 0 && (
         <p className="text-xs text-fin-subtle">
           Provider diagnostics:{" "}
