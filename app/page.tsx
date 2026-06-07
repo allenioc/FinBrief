@@ -16,10 +16,12 @@ interface HomeProps {
   searchParams: Promise<{ q?: string }>;
 }
 
+const DEFAULT_NEWS_QUERY = "stock market";
+
 export default async function HomePage({ searchParams }: HomeProps) {
   const params = await searchParams;
   const query = params.q?.trim() ?? "";
-  const initialBriefs = await getBriefs(query);
+  const initialBriefs = await getBriefs(query || DEFAULT_NEWS_QUERY);
 
   return (
     <div className="mx-auto max-w-shell px-4 py-8 sm:px-6 lg:px-8 lg:py-10">

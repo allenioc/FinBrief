@@ -13,17 +13,20 @@ import { MarketBriefPanel } from "./MarketBriefPanel";
 import { RefreshFeedButton } from "./RefreshFeedButton";
 import { LastUpdatedLabel } from "./LastUpdatedLabel";
 
+const DEFAULT_NEWS_QUERY = "stock market";
+
 export function MarketBriefClient({ initialData }: { initialData: MarketBriefData }) {
   const [data, setData] = useState(initialData);
   const [meta, setMeta] = useState(getInitialMarketBriefMeta);
   const [loading, setLoading] = useState(false);
   const [provider, setProvider] = useState<string>("mock");
+  const [articleCount, setArticleCount] = useState<number>(0);
 
   const fetchLiveBrief = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams({
-      q: "",
-      limit: "24",
+      q: DEFAULT_NEWS_QUERY,
+      limit: "20",
       page: "1",
     });
     try {
@@ -37,6 +40,7 @@ export function MarketBriefClient({ initialData }: { initialData: MarketBriefDat
       if (payload.briefs?.length > 0) {
         setData(buildMarketBriefFromBriefs(payload.briefs));
       }
+      setArticleCount(payload.briefs?.length ?? 0);
       setProvider(payload.provider ?? "mock");
       setMeta((prev) => ({
         refreshCount: prev.refreshCount + 1,
@@ -69,7 +73,7 @@ export function MarketBriefClient({ initialData }: { initialData: MarketBriefDat
           onClick={handleRefresh}
           loading={loading}
           loadingMessage="Refreshing live market brief…"
-          label="Refresh market brief"
+          label="Refresh stories"
         />
       </div>
 
@@ -82,6 +86,9 @@ export function MarketBriefClient({ initialData }: { initialData: MarketBriefDat
       >
         {isLiveProvider(provider) ? `Live feed: ${formatProviderLabel(provider)}` : "Mock fallback"}
       </div>
+      <p className="text-xs text-fin-subtle">
+        {formatLastUpdated(meta.lastUpdatedAt)} · {articleCount} stories
+      </p>
 
       <FeedStatusBar lastUpdatedAt={meta.lastUpdatedAt} />
 

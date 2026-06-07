@@ -5,6 +5,7 @@ import type { Brief } from "@/lib/types";
 import {
   getInitialArticleFeedMeta,
 } from "@/lib/mock-refresh";
+import { formatLastUpdated } from "@/lib/date-format";
 import { formatProviderLabel, isLiveProvider } from "@/lib/news-source";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleCard } from "./ArticleCard";
@@ -14,6 +15,7 @@ import { useWatchlist } from "./WatchlistProvider";
 
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOCUS_REFRESH_COOLDOWN_MS = 2 * 60 * 1000;
+const DEFAULT_NEWS_QUERY = "stock market";
 
 function msUntilNextLocalMidnight(): number {
   const now = new Date();
@@ -42,6 +44,7 @@ export function DashboardFeed({
   const { items: watchlistItems } = useWatchlist();
   const isRefreshingRef = useRef(false);
   const lastRefreshAtRef = useRef(Date.now());
+  const activeQuery = query.trim() || DEFAULT_NEWS_QUERY;
 
   const refreshFeed = useCallback(async (reason: "manual" | "auto" | "focus" | "midnight") => {
     if (isRefreshingRef.current) return;
@@ -52,8 +55,8 @@ export function DashboardFeed({
     }
 
     const params = new URLSearchParams();
-    if (query.trim()) params.set("q", query.trim());
-    params.set("limit", "24");
+    params.set("q", activeQuery);
+    params.set("limit", "20");
     params.set("page", "1");
     try {
       const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
@@ -84,7 +87,7 @@ export function DashboardFeed({
       }
       isRefreshingRef.current = false;
     }
-  }, [query]);
+  }, [activeQuery]);
 
   const handleRefresh = useCallback(async () => {
     await refreshFeed("manual");
@@ -98,7 +101,7 @@ export function DashboardFeed({
     setPage(1);
     setHasMore(true);
     setVisibleCount(12);
-  }, [query]);
+  }, [activeQuery]);
 
   const handleLoadMore = useCallback(async () => {
     if (visibleCount < briefs.length) {
@@ -110,8 +113,8 @@ export function DashboardFeed({
     setLoading(true);
     const nextPage = page + 1;
     const params = new URLSearchParams();
-    if (query.trim()) params.set("q", query.trim());
-    params.set("limit", "24");
+    params.set("q", activeQuery);
+    params.set("limit", "20");
     params.set("page", String(nextPage));
     try {
       const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
@@ -135,7 +138,7 @@ export function DashboardFeed({
     } finally {
       setLoading(false);
     }
-  }, [briefs.length, hasMore, page, query, visibleCount]);
+  }, [activeQuery, briefs.length, hasMore, page, visibleCount]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -216,6 +219,7 @@ export function DashboardFeed({
           onClick={handleRefresh}
           loading={loading}
           loadingMessage="Refreshing live briefings…"
+          label="Refresh stories"
         />
       </div>
 
@@ -239,6 +243,9 @@ export function DashboardFeed({
       </p>
       <p className="text-xs text-fin-subtle">
         Auto-updates every 10 minutes, on tab return, and daily at 12:00 AM local time.
+      </p>
+      <p className="text-xs text-fin-subtle">
+        {formatLastUpdated(meta.lastUpdatedAt)} · {briefs.length} stories
       </p>
       <div
         className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${

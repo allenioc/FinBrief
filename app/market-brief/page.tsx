@@ -2,9 +2,16 @@ import { PageHeader } from "@/components/PageHeader";
 import { Disclaimer } from "@/components/Disclaimer";
 import { MarketBriefClient } from "@/components/MarketBriefClient";
 import { UpdateScheduleFooter } from "@/components/UpdateScheduleFooter";
+import { getBriefs } from "@/lib/briefs";
 import { MARKET_BRIEF } from "@/lib/market-brief-data";
+import { buildMarketBriefFromBriefs } from "@/lib/market-brief-live";
 
-export default function MarketBriefPage() {
+const DEFAULT_NEWS_QUERY = "stock market";
+
+export default async function MarketBriefPage() {
+  const liveBriefs = await getBriefs(DEFAULT_NEWS_QUERY);
+  const initialData = liveBriefs.length > 0 ? buildMarketBriefFromBriefs(liveBriefs) : MARKET_BRIEF;
+
   return (
     <div className="mx-auto max-w-shell px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
       <PageHeader
@@ -13,7 +20,7 @@ export default function MarketBriefPage() {
         description="Top stories, overall mood, macro events, and index performance sourced from /api/news with mock fallback when live providers are unavailable."
       />
 
-      <MarketBriefClient initialData={MARKET_BRIEF} />
+      <MarketBriefClient initialData={initialData} />
 
       <div className="mt-10">
         <Disclaimer />
