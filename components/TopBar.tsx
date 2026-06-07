@@ -3,7 +3,6 @@
 import { usePathname, useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { pageTitle } from "@/lib/theme";
-import { ThemeToggle } from "./ThemeToggle";
 
 export function TopBar({ children }: { children?: React.ReactNode }) {
   const pathname = usePathname();
@@ -58,7 +57,6 @@ export function TopBar({ children }: { children?: React.ReactNode }) {
 
         <div className="flex items-center gap-2">
           {children}
-          <ThemeToggle />
         </div>
       </div>
     </header>
