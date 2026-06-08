@@ -42,6 +42,8 @@ export function ArticleCard({
             alt={article.imageAlt}
             fallbackLabel={fallbackLabel}
             fallbackSub={article.source}
+            fallbackTitle={article.headline}
+            fallbackKind={article.articleType}
             sizes={
               isHero
                 ? "(max-width: 768px) 100vw, 66vw"

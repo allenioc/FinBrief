@@ -189,8 +189,15 @@ export function DashboardFeed({
   }, [refreshFeed]);
 
   const watchlistSymbols = watchlistItems.map((item) => item.symbol.toLowerCase());
+  const sortedBriefs = [...briefs].sort((a, b) => {
+    const at = new Date(a.publishedAt).getTime();
+    const bt = new Date(b.publishedAt).getTime();
+    const safeA = Number.isFinite(at) ? at : 0;
+    const safeB = Number.isFinite(bt) ? bt : 0;
+    return safeB - safeA;
+  });
   const now = Date.now();
-  const timeFiltered = briefs.filter((brief) => {
+  const timeFiltered = sortedBriefs.filter((brief) => {
     const ageMs = now - new Date(brief.publishedAt).getTime();
     if (timeWindow === "breaking") return ageMs <= 6 * 60 * 60 * 1000;
     if (timeWindow === "today") return ageMs <= 24 * 60 * 60 * 1000;

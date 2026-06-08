@@ -72,10 +72,13 @@ function asId(input: string): string {
 }
 
 function coerceDate(input?: string | number): string {
-  if (typeof input === "number") return new Date(input * 1000).toISOString();
-  if (!input) return new Date().toISOString();
+  if (typeof input === "number") {
+    const date = new Date(input * 1000);
+    return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+  }
+  if (!input) return "";
   const date = new Date(input);
-  if (Number.isNaN(date.getTime())) return new Date().toISOString();
+  if (Number.isNaN(date.getTime())) return "";
   return date.toISOString();
 }
 
@@ -299,9 +302,13 @@ function dedupeArticles(items: ProviderArticle[]): ProviderArticle[] {
     const key = urlKey || titleKey;
     if (!byKey.has(key)) byKey.set(key, article);
   }
-  return [...byKey.values()].sort(
-    (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
-  );
+  return [...byKey.values()].sort((a, b) => {
+    const at = new Date(a.publishedAt).getTime();
+    const bt = new Date(b.publishedAt).getTime();
+    const safeA = Number.isFinite(at) ? at : 0;
+    const safeB = Number.isFinite(bt) ? bt : 0;
+    return safeB - safeA;
+  });
 }
 
 export async function fetchProviderNews(

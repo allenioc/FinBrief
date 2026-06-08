@@ -1,16 +1,36 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ArticleType } from "@/lib/types";
 
 interface ArticleThumbnailProps {
   src: string;
   alt: string;
   fallbackLabel: string;
   fallbackSub?: string;
+  fallbackTitle?: string;
+  fallbackKind?: ArticleType;
   priority?: boolean;
   sizes?: string;
   className?: string;
+}
+
+type LoadState = "loading" | "loaded" | "fallback";
+
+const FALLBACK_TIMEOUT_MS = 2800;
+
+function gradientClass(kind?: ArticleType): string {
+  if (kind === "macro news" || kind === "market news") {
+    return "bg-gradient-to-br from-slate-100 via-sky-100 to-blue-200";
+  }
+  if (kind === "ETF/index news") {
+    return "bg-gradient-to-br from-indigo-100 via-blue-100 to-cyan-100";
+  }
+  if (kind === "sector news") {
+    return "bg-gradient-to-br from-emerald-100 via-cyan-50 to-blue-100";
+  }
+  return "bg-gradient-to-br from-fin-brand-soft via-fin-muted to-fin-bg";
 }
 
 export function ArticleThumbnail({
@@ -18,16 +38,43 @@ export function ArticleThumbnail({
   alt,
   fallbackLabel,
   fallbackSub,
+  fallbackTitle,
+  fallbackKind,
   priority = false,
   sizes = "(max-width: 768px) 100vw, 50vw",
   className = "object-cover transition-transform duration-500 group-hover:scale-[1.03]",
 }: ArticleThumbnailProps) {
-  const [failed, setFailed] = useState(false);
+  const [state, setState] = useState<LoadState>("loading");
+  const timerRef = useRef<number | null>(null);
+  const hasSetFallback = useRef(false);
+  const isMissingSource = !src || !src.trim();
+  const stableGradient = useMemo(() => gradientClass(fallbackKind), [fallbackKind]);
 
-  if (failed) {
+  useEffect(() => {
+    hasSetFallback.current = false;
+    setState(isMissingSource ? "fallback" : "loading");
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    if (!isMissingSource) {
+      timerRef.current = window.setTimeout(() => {
+        hasSetFallback.current = true;
+        setState("fallback");
+      }, FALLBACK_TIMEOUT_MS);
+    }
+    return () => {
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [src, isMissingSource]);
+
+  if (state === "fallback") {
     return (
       <div
-        className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-fin-brand-soft via-fin-muted to-fin-bg px-6 text-center"
+        className={`absolute inset-0 flex flex-col items-center justify-center px-6 text-center ${stableGradient}`}
         role="img"
         aria-label={alt}
       >
@@ -37,19 +84,44 @@ export function ArticleThumbnail({
         {fallbackSub && (
           <span className="mt-2 max-w-xs text-xs text-fin-subtle">{fallbackSub}</span>
         )}
+        {fallbackTitle && <span className="mt-3 line-clamp-2 max-w-xs text-sm font-medium text-fin-navy">{fallbackTitle}</span>}
       </div>
     );
   }
 
   return (
-    <Image
-      src={src}
-      alt={alt}
-      fill
-      className={className}
-      sizes={sizes}
-      priority={priority}
-      onError={() => setFailed(true)}
-    />
+    <>
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        className={`${className} transition-opacity duration-300 ${state === "loaded" ? "opacity-100" : "opacity-0"}`}
+        sizes={sizes}
+        priority={priority}
+        onError={() => {
+          if (hasSetFallback.current) return;
+          hasSetFallback.current = true;
+          setState("fallback");
+        }}
+        onLoad={(event) => {
+          const img = event.currentTarget as HTMLImageElement;
+          if (!img.naturalWidth || !img.naturalHeight) {
+            hasSetFallback.current = true;
+            setState("fallback");
+            return;
+          }
+          if (timerRef.current) {
+            window.clearTimeout(timerRef.current);
+            timerRef.current = null;
+          }
+          if (!hasSetFallback.current) {
+            setState("loaded");
+          }
+        }}
+      />
+      {state === "loading" && (
+        <div className={`absolute inset-0 ${stableGradient}`} aria-hidden />
+      )}
+    </>
   );
 }

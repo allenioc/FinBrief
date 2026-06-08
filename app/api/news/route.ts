@@ -20,6 +20,12 @@ type CachedPayload = {
   briefs: ReturnType<typeof providerArticlesToBriefs>["briefs"];
 };
 
+function publishedTime(iso?: string): number {
+  if (!iso) return 0;
+  const value = new Date(iso).getTime();
+  return Number.isFinite(value) ? value : 0;
+}
+
 // Keep this short so deployed feed does not feel stale.
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const cache = new Map<string, { expiresAt: number; payload: CachedPayload }>();
@@ -137,10 +143,10 @@ export async function GET(request: NextRequest) {
           providerArticles: providerResponse.articles,
         });
         const sortedBriefs = [...mapped.briefs].sort(
-          (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+          (a, b) => publishedTime(b.publishedAt) - publishedTime(a.publishedAt)
         );
         const sortedArticles = [...mapped.normalized].sort(
-          (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+          (a, b) => publishedTime(b.publishedAt) - publishedTime(a.publishedAt)
         );
         return {
           query,
