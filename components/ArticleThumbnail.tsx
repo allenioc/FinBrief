@@ -19,6 +19,39 @@ interface ArticleThumbnailProps {
 type LoadState = "loading" | "loaded" | "fallback";
 
 const FALLBACK_TIMEOUT_MS = 2800;
+const SAFE_EXTERNAL_IMAGE_HOSTS = new Set([
+  "s.yimg.com",
+  "media.zenfs.com",
+  "image.cnbcfm.com",
+  "images.wsj.net",
+  "images.barrons.com",
+  "images.marketwatch.com",
+  "static.seekingalpha.com",
+  "www.reuters.com",
+  "images.reuters.com",
+  "www.bloomberg.com",
+  "assets.bwbx.io",
+  "images.unsplash.com",
+]);
+const SAFE_EXTERNAL_IMAGE_HOST_SUFFIXES = [
+  ".yimg.com",
+  ".reuters.com",
+  ".bloomberg.com",
+];
+
+function isSafeRemoteImageSource(value: string): boolean {
+  if (!value) return false;
+  if (value.startsWith("/")) return true;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+    const hostname = parsed.hostname.toLowerCase();
+    if (SAFE_EXTERNAL_IMAGE_HOSTS.has(hostname)) return true;
+    return SAFE_EXTERNAL_IMAGE_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix));
+  } catch {
+    return false;
+  }
+}
 
 function gradientClass(kind?: ArticleType): string {
   if (kind === "macro news" || kind === "market news") {
@@ -48,16 +81,17 @@ export function ArticleThumbnail({
   const timerRef = useRef<number | null>(null);
   const hasSetFallback = useRef(false);
   const isMissingSource = !src || !src.trim();
+  const isSafeSource = isSafeRemoteImageSource(src.trim());
   const stableGradient = useMemo(() => gradientClass(fallbackKind), [fallbackKind]);
 
   useEffect(() => {
     hasSetFallback.current = false;
-    setState(isMissingSource ? "fallback" : "loading");
+    setState(isMissingSource || !isSafeSource ? "fallback" : "loading");
     if (timerRef.current) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    if (!isMissingSource) {
+    if (!isMissingSource && isSafeSource) {
       timerRef.current = window.setTimeout(() => {
         hasSetFallback.current = true;
         setState("fallback");
@@ -69,7 +103,7 @@ export function ArticleThumbnail({
         timerRef.current = null;
       }
     };
-  }, [src, isMissingSource]);
+  }, [src, isMissingSource, isSafeSource]);
 
   if (state === "fallback") {
     return (
