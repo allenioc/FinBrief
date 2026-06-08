@@ -46,6 +46,7 @@ export function DashboardFeed({
   const isRefreshingRef = useRef(false);
   const lastRefreshAtRef = useRef(Date.now());
   const activeQuery = query.trim() || DEFAULT_NEWS_QUERY;
+  const isTopicQuery = activeQuery !== DEFAULT_NEWS_QUERY;
 
   function idsSignature(items: Brief[]): string {
     return items.map((item) => item.id).join("|");
@@ -63,7 +64,7 @@ export function DashboardFeed({
     params.set("q", activeQuery);
     params.set("limit", "20");
     params.set("page", "1");
-    if (reason === "manual") params.set("fresh", Date.now().toString());
+    if (reason === "manual" || isTopicQuery) params.set("fresh", Date.now().toString());
     try {
       const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
       if (response.ok) {
@@ -109,7 +110,7 @@ export function DashboardFeed({
       }
       isRefreshingRef.current = false;
     }
-  }, [activeQuery, briefs, initialBriefs]);
+  }, [activeQuery, briefs, initialBriefs, isTopicQuery]);
 
   const handleRefresh = useCallback(async () => {
     await refreshFeed("manual");
@@ -315,7 +316,7 @@ export function DashboardFeed({
         </p>
       ) : displayed.length === 0 ? (
         <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
-          No stories found for this query. FinBrief will use mock fallback only when live providers are unavailable.
+          No fresh stories found for this topic. Try refreshing or searching another topic.
         </p>
       ) : (
         <div className="space-y-10">

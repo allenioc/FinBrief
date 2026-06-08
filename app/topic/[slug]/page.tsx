@@ -1,9 +1,5 @@
-import { Disclaimer } from "@/components/Disclaimer";
-import { TopicHub } from "@/components/TopicHub";
-import { UpdateScheduleFooter } from "@/components/UpdateScheduleFooter";
-import { getBriefsForTopic } from "@/lib/briefs";
-import { getTopicProfile } from "@/lib/topics";
-import { notFound } from "next/navigation";
+import { fromTopicSlug } from "@/lib/slug";
+import { redirect } from "next/navigation";
 
 interface TopicPageProps {
   params: Promise<{ slug: string }>;
@@ -11,21 +7,6 @@ interface TopicPageProps {
 
 export default async function TopicPage({ params }: TopicPageProps) {
   const { slug } = await params;
-  const profile = await getTopicProfile(slug);
-
-  if (!profile) {
-    notFound();
-  }
-
-  const stories = await getBriefsForTopic(slug);
-
-  return (
-    <div className="mx-auto max-w-shell px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
-      <TopicHub profile={profile} stories={stories} />
-      <div className="mt-10">
-        <Disclaimer />
-      </div>
-      <UpdateScheduleFooter />
-    </div>
-  );
+  const query = fromTopicSlug(slug);
+  redirect(`/?q=${encodeURIComponent(query)}`);
 }

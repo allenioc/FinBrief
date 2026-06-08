@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import type { WatchlistFeedItem, WatchlistItemType } from "@/lib/types";
+import type { WatchlistItem, WatchlistItemType } from "@/lib/types";
 import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
 import { MarketImpactBadge } from "./MarketImpactBadge";
 import { SentimentBadge } from "./SentimentBadge";
-import { TimeAgo } from "./TimeAgo";
 import { TooltipLabel } from "./Tooltip";
 import { useWatchlist } from "./WatchlistProvider";
 
@@ -17,11 +16,11 @@ const typeLabels: Record<WatchlistItemType, string> = {
   topic: "Macro topic",
 };
 
-export function WatchlistTable({ items }: { items: WatchlistFeedItem[] }) {
+export function WatchlistTable({ items }: { items: WatchlistItem[] }) {
   if (items.length === 0) {
     return (
       <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
-        Your watchlist is empty. Use the form above to add tickers or topics (demo only).
+        Your watchlist is empty. Use the form above to add topics to track.
       </p>
     );
   }
@@ -40,9 +39,6 @@ export function WatchlistTable({ items }: { items: WatchlistFeedItem[] }) {
             <th className="px-5 py-3 fin-label">
               <TooltipLabel label="Market impact" content={ANALYSIS_LABEL_TOOLTIPS.marketImpact} />
             </th>
-            <th className="px-5 py-3 fin-label text-right">Total</th>
-            <th className="px-5 py-3 fin-label">Last updated</th>
-            <th className="px-5 py-3 fin-label text-right">New</th>
             <th className="px-5 py-3 fin-label text-right">Action</th>
             <th className="px-5 py-3 fin-label text-right">Brief</th>
           </tr>
@@ -68,29 +64,12 @@ export function WatchlistTable({ items }: { items: WatchlistFeedItem[] }) {
               <td className="px-5 py-4">
                 <MarketImpactBadge impact={item.marketImpact} />
               </td>
-              <td className="px-5 py-4 text-right font-semibold tabular-nums text-fin-navy">
-                {item.relatedStoriesCount}
-              </td>
-              <td className="px-5 py-4">
-                <TimeAgo iso={item.feedLastUpdatedAt} />
-              </td>
-              <td className="px-5 py-4 text-right">
-                <span
-                  className={
-                    item.newStoriesCount > 0
-                      ? "inline-flex min-w-[2rem] justify-center rounded-full bg-fin-brand-soft px-2.5 py-0.5 font-bold tabular-nums text-fin-brand"
-                      : "text-fin-subtle"
-                  }
-                >
-                  {item.newStoriesCount > 0 ? item.newStoriesCount : "—"}
-                </span>
-              </td>
               <td className="px-5 py-4 text-right">
                 <RemoveFollowButton symbol={item.symbol} />
               </td>
               <td className="px-5 py-4 text-right">
                 <Link
-                  href={`/topic/${item.topicSlug}`}
+                  href={`/?q=${encodeURIComponent(item.symbol)}`}
                   className="fin-link text-xs font-bold"
                 >
                   Open →

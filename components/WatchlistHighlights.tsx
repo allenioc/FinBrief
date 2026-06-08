@@ -19,10 +19,10 @@ export function WatchlistHighlights() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {highlights.map((item) => (
-        <Link key={item.id} href={`/topic/${item.topicSlug}`} className="fin-card fin-card-hover p-4">
+        <Link key={item.id} href={`/?q=${encodeURIComponent(item.symbol)}`} className="fin-card fin-card-hover p-4">
           <span className="font-mono text-sm font-bold text-fin-brand">{item.symbol}</span>
           <p className="mt-1 text-xs text-fin-subtle line-clamp-2">{item.name}</p>
-          <p className="mt-2 text-xs font-medium text-fin-subtle">{item.relatedStoriesCount} stories</p>
+          <p className="mt-2 text-xs font-medium text-fin-subtle">Open live topic feed</p>
           <div className="mt-3">
             <FollowToggleButton item={item} />
           </div>

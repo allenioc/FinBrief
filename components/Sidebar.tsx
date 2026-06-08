@@ -18,16 +18,16 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { items } = useWatchlist();
   const followingItems = items.slice(0, 8).map((item) => ({
     label: item.symbol,
-    href: `/topic/${item.topicSlug}`,
+    href: `/?q=${encodeURIComponent(item.symbol)}`,
   }));
   const navSections = SIDEBAR_NAV.map((section) =>
-    section.label === "Following"
+    section.label === "Topics"
       ? {
           ...section,
           items:
             followingItems.length > 0
               ? followingItems
-              : [{ label: "Add symbols", href: "/watchlist" }],
+              : section.items,
         }
       : section
   );

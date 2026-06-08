@@ -1,4 +1,4 @@
-import type { WatchlistFeedItem, WatchlistItemType } from "@/lib/types";
+import type { WatchlistItem, WatchlistItemType } from "@/lib/types";
 
 const typeLabels: Record<WatchlistItemType, string> = {
   stock: "Stocks",
@@ -8,7 +8,7 @@ const typeLabels: Record<WatchlistItemType, string> = {
   topic: "Macro topics",
 };
 
-export function WatchlistSummary({ items }: { items: WatchlistFeedItem[] }) {
+export function WatchlistSummary({ items }: { items: WatchlistItem[] }) {
   const byType = items.reduce(
     (acc, item) => {
       acc[item.type] = (acc[item.type] ?? 0) + 1;
@@ -17,15 +17,13 @@ export function WatchlistSummary({ items }: { items: WatchlistFeedItem[] }) {
     {} as Record<WatchlistItemType, number>
   );
 
-  const totalStories = items.reduce((sum, i) => sum + i.relatedStoriesCount, 0);
-  const totalNew = items.reduce((sum, i) => sum + i.newStoriesCount, 0);
   const highImpact = items.filter((i) => i.marketImpact === "high").length;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-      <StatCard label="Watchlist items" value={String(items.length)} />
-      <StatCard label="Related stories" value={String(totalStories)} sub="Across all symbols" />
-      <StatCard label="New stories" value={String(totalNew)} sub="Since last refresh (mock)" />
+      <StatCard label="Saved topics" value={String(items.length)} />
+      <StatCard label="Stocks & ETFs" value={String((byType.stock ?? 0) + (byType.etf ?? 0))} />
+      <StatCard label="Macro topics" value={String(byType.topic ?? 0)} />
       <StatCard label="High impact items" value={String(highImpact)} sub="Elevated market sensitivity" />
       <div className="fin-card p-4">
         <p className="fin-label">Breakdown</p>

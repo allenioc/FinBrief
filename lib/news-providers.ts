@@ -22,10 +22,18 @@ export interface NewsProviderResponse {
 }
 
 const QUERY_EXPANSIONS: Record<string, string> = {
+  apple: "Apple OR AAPL OR iPhone OR Apple earnings",
   aapl: "Apple stock OR Apple earnings",
+  nvidia: "NVIDIA OR NVDA OR AI chips OR data center GPUs",
+  nvda: "NVIDIA OR NVDA OR AI chips OR data center GPUs",
   tsla: "Tesla stock OR Tesla deliveries",
   spy: "S&P 500 OR SPY ETF",
   qqq: "Nasdaq 100 OR QQQ ETF",
+  markets: "global markets OR stock market OR s&p 500 OR nasdaq",
+  economy: "economy OR GDP OR jobs OR inflation OR federal reserve",
+  banking: "banking OR banks OR credit OR treasury yields",
+  "real estate": "real estate OR housing market OR mortgage rates",
+  ai: "artificial intelligence OR AI stocks OR semiconductors",
   inflation: "inflation CPI interest rates Fed",
   "interest rates": "interest rates Fed Treasury yields inflation",
 };
@@ -58,6 +66,18 @@ const FINANCE_RELEVANCE_TERMS = [
   "bank",
   "banking",
 ];
+
+const FOCUSED_QUERY_TERMS: Record<string, string[]> = {
+  nvidia: ["nvidia", "nvda"],
+  nvda: ["nvidia", "nvda"],
+  apple: ["apple", "aapl"],
+  aapl: ["apple", "aapl"],
+  markets: ["market", "markets", "stocks", "nasdaq", "s&p", "dow"],
+  economy: ["economy", "gdp", "jobs", "inflation", "recession"],
+  banking: ["bank", "banks", "banking", "credit", "lending"],
+  "real estate": ["real estate", "housing", "mortgage", "home sales"],
+  ai: ["ai", "artificial intelligence", "machine learning", "semiconductor", "chip"],
+};
 
 export function expandNewsQuery(query: string): string {
   const normalized = query.trim().toLowerCase();
@@ -282,25 +302,49 @@ function resolveQueryBatch(query: string, page: number): string[] {
 
 function isFinanceRelevant(article: ProviderArticle, query: string): boolean {
   const haystack = `${article.headline} ${article.excerpt} ${article.source}`.toLowerCase();
-  const queryTerms = expandNewsQuery(query)
+  const normalizedQuery = query.trim().toLowerCase();
+  const broadQueryTerms = expandNewsQuery(query)
     .toLowerCase()
     .split(/\s+or\s+|\s+/)
-    .filter((term) => term.length > 2)
+    .filter((term) => term.length > 1)
     .map((term) => term.replace(/[^a-z0-9]/g, ""));
   const termMatch = FINANCE_RELEVANCE_TERMS.some((term) => haystack.includes(term));
-  const queryMatch =
-    queryTerms.length === 0 ||
-    queryTerms.some((term) => haystack.includes(term) || haystack.includes(term.toUpperCase()));
-  return termMatch || queryMatch;
+  const broadQueryMatch =
+    broadQueryTerms.length === 0 ||
+    broadQueryTerms.some((term) => haystack.includes(term) || haystack.includes(term.toUpperCase()));
+
+  if (!normalizedQuery || normalizedQuery === BROAD_NEWS_QUERY) {
+    return termMatch || broadQueryMatch;
+  }
+
+  const focusedTerms =
+    FOCUSED_QUERY_TERMS[normalizedQuery] ??
+    [normalizedQuery]
+      .flatMap((term) => term.split(/\s+/))
+      .filter((term) => term.length > 1);
+  const focusedQueryMatch = focusedTerms.some((term) => haystack.includes(term));
+
+  return focusedQueryMatch && (termMatch || isTickerLike(query));
 }
 
 function dedupeArticles(items: ProviderArticle[]): ProviderArticle[] {
   const byKey = new Map<string, ProviderArticle>();
   for (const article of items) {
     const urlKey = article.originalUrl.trim().toLowerCase();
-    const titleKey = `${article.source}-${article.headline}`.toLowerCase();
+    const titleKey = article.headline.trim().toLowerCase().replace(/\s+/g, " ");
     const key = urlKey || titleKey;
-    if (!byKey.has(key)) byKey.set(key, article);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, article);
+      continue;
+    }
+    const existingTime = new Date(existing.publishedAt).getTime();
+    const nextTime = new Date(article.publishedAt).getTime();
+    const safeExisting = Number.isFinite(existingTime) ? existingTime : 0;
+    const safeNext = Number.isFinite(nextTime) ? nextTime : 0;
+    if (safeNext > safeExisting) {
+      byKey.set(key, article);
+    }
   }
   return [...byKey.values()].sort((a, b) => {
     const at = new Date(a.publishedAt).getTime();

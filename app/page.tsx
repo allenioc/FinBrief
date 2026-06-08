@@ -21,13 +21,18 @@ export default async function HomePage({ searchParams }: HomeProps) {
   const params = await searchParams;
   const query = params.q?.trim() ?? "";
   const initialBriefs = await getBriefs(query || BROAD_NEWS_QUERY);
+  const isTopicView = query.length > 0;
+  const title = isTopicView ? `${query} news feed` : "Understand markets with clarity";
+  const description = isTopicView
+    ? `Showing latest stories for ${query}. Refresh to pull the newest live coverage for this topic.`
+    : "Search any stock, ETF, index, or macro topic. FinBrief delivers structured, educational summaries with sentiment, impact, and source context.";
 
   return (
     <div className="mx-auto max-w-shell px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
       <PageHeader
         eyebrow={BRAND.tagline}
-        title="Understand markets with clarity"
-        description="Search any stock, ETF, index, or macro topic. FinBrief delivers structured, educational summaries with sentiment, impact, and source context."
+        title={title}
+        description={description}
       >
         <Suspense fallback={<div className="h-28 animate-pulse rounded-panel bg-fin-muted" />}>
           <SearchBar trending={TRENDING_SEARCHES} />

@@ -8,9 +8,9 @@ export default function WatchlistPage() {
   return (
     <div className="mx-auto max-w-shell px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
       <PageHeader
-        eyebrow="Following"
+        eyebrow="Topics"
         title="Watchlist"
-        description="Track stocks, ETFs, indexes, sectors, and macro topics. Feed timestamps and new-story counts refresh on demand — mock data until live APIs are connected."
+        description="Save stocks and macro topics, then open each one to view a live filtered feed from /api/news."
       />
 
       <WatchlistClient />
