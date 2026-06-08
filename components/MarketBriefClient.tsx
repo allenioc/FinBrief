@@ -6,6 +6,7 @@ import {
   getInitialMarketBriefMeta,
 } from "@/lib/mock-refresh";
 import { buildMarketBriefFromBriefs } from "@/lib/market-brief-live";
+import { BROAD_NEWS_QUERY } from "@/lib/news-constants";
 import { formatProviderLabel, isLiveProvider } from "@/lib/news-source";
 import { formatLastUpdated, formatTodayAt } from "@/lib/date-format";
 import { FeedStatusBar } from "./FeedStatusBar";
@@ -13,30 +14,33 @@ import { MarketBriefPanel } from "./MarketBriefPanel";
 import { RefreshFeedButton } from "./RefreshFeedButton";
 import { LastUpdatedLabel } from "./LastUpdatedLabel";
 
-const DEFAULT_NEWS_QUERY = "stock market";
-
 export function MarketBriefClient({ initialData }: { initialData: MarketBriefData }) {
   const [data, setData] = useState(initialData);
   const [meta, setMeta] = useState(getInitialMarketBriefMeta);
   const [loading, setLoading] = useState(false);
   const [provider, setProvider] = useState<string>("mock");
   const [articleCount, setArticleCount] = useState<number>(0);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const fetchLiveBrief = useCallback(async () => {
+  const fetchLiveBrief = useCallback(async (manual = false) => {
     setLoading(true);
+    if (manual) setStatusMessage("Checking for newer stories…");
     const params = new URLSearchParams({
-      q: DEFAULT_NEWS_QUERY,
+      q: BROAD_NEWS_QUERY,
       limit: "20",
       page: "1",
     });
+    if (manual) params.set("fresh", Date.now().toString());
     try {
       const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
       if (!response.ok) return;
       const payload = (await response.json()) as {
         briefs: Brief[];
         provider?: string;
-        lastUpdatedAt?: string;
+        fetchedAt?: string;
       };
+      const prevTop = data.topStories.map((story) => story.id).join("|");
+      const nextTop = payload.briefs.slice(0, 5).map((story) => story.id).join("|");
       if (payload.briefs?.length > 0) {
         setData(buildMarketBriefFromBriefs(payload.briefs));
       }
@@ -44,19 +48,21 @@ export function MarketBriefClient({ initialData }: { initialData: MarketBriefDat
       setProvider(payload.provider ?? "mock");
       setMeta((prev) => ({
         refreshCount: prev.refreshCount + 1,
-        lastUpdatedAt: payload.lastUpdatedAt ?? new Date().toISOString(),
+        lastUpdatedAt: payload.fetchedAt ?? new Date().toISOString(),
       }));
+      if (manual) setStatusMessage(prevTop === nextTop ? "You're up to date." : "Stories updated.");
     } finally {
       setLoading(false);
+      if (manual) window.setTimeout(() => setStatusMessage(null), 1800);
     }
-  }, []);
+  }, [data.topStories]);
 
   useEffect(() => {
     fetchLiveBrief();
   }, [fetchLiveBrief]);
 
   const handleRefresh = useCallback(async () => {
-    await fetchLiveBrief();
+    await fetchLiveBrief(true);
   }, [fetchLiveBrief]);
 
   return (
@@ -72,7 +78,7 @@ export function MarketBriefClient({ initialData }: { initialData: MarketBriefDat
         <RefreshFeedButton
           onClick={handleRefresh}
           loading={loading}
-          loadingMessage="Refreshing live market brief…"
+          loadingMessage="Checking for newer stories…"
           label="Refresh stories"
         />
       </div>
@@ -90,9 +96,15 @@ export function MarketBriefClient({ initialData }: { initialData: MarketBriefDat
         {formatLastUpdated(meta.lastUpdatedAt)} · {articleCount} stories
       </p>
 
+      {statusMessage && (
+        <p className="text-sm font-medium text-fin-brand" role="status">
+          {statusMessage}
+        </p>
+      )}
+
       <FeedStatusBar lastUpdatedAt={meta.lastUpdatedAt} />
 
-      {loading && (
+      {loading && !statusMessage && (
         <p className="text-sm font-medium text-fin-brand" role="status">
           Refreshing market brief from /api/news…
         </p>

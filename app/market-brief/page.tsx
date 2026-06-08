@@ -3,13 +3,12 @@ import { Disclaimer } from "@/components/Disclaimer";
 import { MarketBriefClient } from "@/components/MarketBriefClient";
 import { UpdateScheduleFooter } from "@/components/UpdateScheduleFooter";
 import { getBriefs } from "@/lib/briefs";
+import { BROAD_NEWS_QUERY } from "@/lib/news-constants";
 import { MARKET_BRIEF } from "@/lib/market-brief-data";
 import { buildMarketBriefFromBriefs } from "@/lib/market-brief-live";
 
-const DEFAULT_NEWS_QUERY = "stock market";
-
 export default async function MarketBriefPage() {
-  const liveBriefs = await getBriefs(DEFAULT_NEWS_QUERY);
+  const liveBriefs = await getBriefs(BROAD_NEWS_QUERY);
   const initialData = liveBriefs.length > 0 ? buildMarketBriefFromBriefs(liveBriefs) : MARKET_BRIEF;
 
   return (

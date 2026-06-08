@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { BROAD_NEWS_QUERY, BROAD_FINANCE_QUERIES } from "@/lib/news-constants";
 
 const PREWARM_QUERIES = [
-  "",
-  "aapl",
-  "tsla",
-  "spy",
-  "qqq",
-  "inflation",
-  "interest rates",
-  "fed",
-  "bond yields",
-  "banking",
+  BROAD_NEWS_QUERY,
+  ...BROAD_FINANCE_QUERIES.slice(0, 8),
 ];
 
 function resolveBaseUrl(request: NextRequest): string {
@@ -35,6 +28,8 @@ export async function GET(request: NextRequest) {
   const baseUrl = resolveBaseUrl(request);
   const results: Array<{ query: string; ok: boolean; status: number }> = [];
 
+  // Cron prewarms broad news searches so the first user request can hit warm cache.
+  // This is useful before we introduce persistent storage.
   for (const query of PREWARM_QUERIES) {
     const params = new URLSearchParams();
     if (query) params.set("q", query);
@@ -45,7 +40,7 @@ export async function GET(request: NextRequest) {
       headers: secret ? { authorization: `Bearer ${secret}` } : undefined,
     });
     results.push({
-      query: query || "top",
+      query: query || BROAD_NEWS_QUERY,
       ok: response.ok,
       status: response.status,
     });

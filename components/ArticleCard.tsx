@@ -77,6 +77,7 @@ export function ArticleCard({
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-fin-subtle">
             {article.source}
+            {article.author ? ` · ${article.author}` : ""}
           </p>
           <Link href={`/brief/${article.id}`}>
             <h3
@@ -113,7 +114,17 @@ export function ArticleCard({
           <Link href={`/brief/${article.id}`} className="fin-link text-sm font-semibold">
             Read FinBrief summary →
           </Link>
-          <FollowToggleButton item={watchlistItem} />
+          <div className="flex items-center gap-2">
+            <a
+              href={article.originalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="fin-link text-xs font-semibold"
+            >
+              Read source ↗
+            </a>
+            <FollowToggleButton item={watchlistItem} />
+          </div>
         </div>
       </div>
     </article>

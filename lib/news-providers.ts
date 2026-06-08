@@ -1,3 +1,5 @@
+import { BROAD_FINANCE_QUERIES, BROAD_NEWS_QUERY } from "./news-constants";
+
 export interface ProviderArticle {
   id: string;
   headline: string;
@@ -59,7 +61,7 @@ const FINANCE_RELEVANCE_TERMS = [
 
 export function expandNewsQuery(query: string): string {
   const normalized = query.trim().toLowerCase();
-  if (!normalized) {
+  if (!normalized || normalized === BROAD_NEWS_QUERY) {
     return "global markets OR business economy OR inflation OR interest rates OR corporate earnings";
   }
   return QUERY_EXPANSIONS[normalized] ?? query;
@@ -261,6 +263,20 @@ function configuredProviders() {
   return providers;
 }
 
+function resolveQueryBatch(query: string, page: number): string[] {
+  const normalized = query.trim().toLowerCase();
+  if (normalized && normalized !== BROAD_NEWS_QUERY) return [query];
+
+  // Keep request volume bounded while still rotating broad themes over pages.
+  const perPage = 8;
+  const start = ((Math.max(1, page) - 1) * perPage) % BROAD_FINANCE_QUERIES.length;
+  const selected: string[] = [];
+  for (let i = 0; i < perPage; i += 1) {
+    selected.push(BROAD_FINANCE_QUERIES[(start + i) % BROAD_FINANCE_QUERIES.length]);
+  }
+  return selected;
+}
+
 function isFinanceRelevant(article: ProviderArticle, query: string): boolean {
   const haystack = `${article.headline} ${article.excerpt} ${article.source}`.toLowerCase();
   const queryTerms = expandNewsQuery(query)
@@ -295,30 +311,34 @@ export async function fetchProviderNews(
 ): Promise<NewsProviderResponse | null> {
   const providers = configuredProviders();
   if (providers.length === 0) return null;
+  const queryBatch = resolveQueryBatch(query, page);
+  const perQueryLimit = Math.max(8, Math.ceil((limit * 2) / queryBatch.length));
 
-  const tasks = providers.map(async (provider) => {
+  const tasks = providers.flatMap((provider) =>
+    queryBatch.map(async (singleQuery) => {
     try {
       if (provider === "newsapi" && process.env.NEWS_API_KEY) {
-        const articles = await fetchFromNewsApi(query, limit, page, process.env.NEWS_API_KEY);
+        const articles = await fetchFromNewsApi(singleQuery, perQueryLimit, 1, process.env.NEWS_API_KEY);
         return { provider, articles };
       }
       if (provider === "finnhub" && process.env.FINNHUB_API_KEY) {
-        const articles = await fetchFromFinnhub(query, limit, page, process.env.FINNHUB_API_KEY);
+        const articles = await fetchFromFinnhub(singleQuery, perQueryLimit, 1, process.env.FINNHUB_API_KEY);
         return { provider, articles };
       }
       if (provider === "polygon" && process.env.POLYGON_API_KEY) {
-        const articles = await fetchFromPolygon(query, limit, page, process.env.POLYGON_API_KEY);
+        const articles = await fetchFromPolygon(singleQuery, perQueryLimit, 1, process.env.POLYGON_API_KEY);
         return { provider, articles };
       }
       if (provider === "alphavantage" && process.env.ALPHA_VANTAGE_API_KEY) {
-        const articles = await fetchFromAlphaVantage(query, limit, page, process.env.ALPHA_VANTAGE_API_KEY);
+        const articles = await fetchFromAlphaVantage(singleQuery, perQueryLimit, 1, process.env.ALPHA_VANTAGE_API_KEY);
         return { provider, articles };
       }
       return { provider, articles: [] as ProviderArticle[] };
     } catch {
       return { provider, articles: [] as ProviderArticle[] };
     }
-  });
+  })
+  );
 
   const resolved = await Promise.all(tasks);
   const providerStats = resolved.map((entry) => ({
@@ -326,7 +346,7 @@ export async function fetchProviderNews(
     count: entry.articles.length,
   }));
   const merged = dedupeArticles(resolved.flatMap((entry) => entry.articles)).filter((article) =>
-    isFinanceRelevant(article, query)
+    isFinanceRelevant(article, queryBatch.join(" "))
   );
   const start = (Math.max(1, page) - 1) * limit;
   const paginated = merged.slice(start, start + limit);

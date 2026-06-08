@@ -7,6 +7,7 @@ import {
 } from "@/lib/mock-refresh";
 import { formatLastUpdated } from "@/lib/date-format";
 import { formatProviderLabel, isLiveProvider } from "@/lib/news-source";
+import { BROAD_NEWS_QUERY } from "@/lib/news-constants";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleCard } from "./ArticleCard";
 import { FeedStatusBar } from "./FeedStatusBar";
@@ -15,7 +16,7 @@ import { useWatchlist } from "./WatchlistProvider";
 
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
 const FOCUS_REFRESH_COOLDOWN_MS = 2 * 60 * 1000;
-const DEFAULT_NEWS_QUERY = "stock market";
+const DEFAULT_NEWS_QUERY = BROAD_NEWS_QUERY;
 
 function msUntilNextLocalMidnight(): number {
   const now = new Date();
@@ -51,24 +52,25 @@ export function DashboardFeed({
     if (isRefreshingRef.current) return;
     isRefreshingRef.current = true;
     setLoading(true);
-    if (reason === "manual") {
-      setStatusMessage("Refreshing live briefings…");
-    }
+    if (reason === "manual") setStatusMessage("Checking for newer stories…");
 
     const params = new URLSearchParams();
     params.set("q", activeQuery);
     params.set("limit", "20");
     params.set("page", "1");
+    if (reason === "manual") params.set("fresh", Date.now().toString());
     try {
       const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
       if (response.ok) {
         const payload = (await response.json()) as {
           briefs: Brief[];
-          lastUpdatedAt: string;
+          fetchedAt: string;
+          articleCount?: number;
           hasMore?: boolean;
           provider?: string;
           providerStats?: Array<{ provider: string; count: number }>;
         };
+        const prevIds = briefs.slice(0, 5).map((item) => item.id).join("|");
         const provider = payload.provider ?? "mock";
         const apiBriefs = payload.briefs ?? [];
         const nextBriefs =
@@ -80,7 +82,7 @@ export function DashboardFeed({
         setBriefs(nextBriefs);
         setMeta((prev) => ({
           refreshCount: prev.refreshCount + 1,
-          lastUpdatedAt: payload.lastUpdatedAt ?? new Date().toISOString(),
+          lastUpdatedAt: payload.fetchedAt ?? new Date().toISOString(),
         }));
         setVisibleCount(12);
         setPage(1);
@@ -89,15 +91,19 @@ export function DashboardFeed({
         setProviderStats(payload.providerStats ?? []);
         setHasLoadedApi(true);
         lastRefreshAtRef.current = Date.now();
+        if (reason === "manual") {
+          const nextIds = nextBriefs.slice(0, 5).map((item) => item.id).join("|");
+          setStatusMessage(prevIds === nextIds ? "You're up to date." : "Stories updated.");
+        }
       }
     } finally {
       setLoading(false);
       if (reason === "manual") {
-        setStatusMessage(null);
+        window.setTimeout(() => setStatusMessage(null), 1800);
       }
       isRefreshingRef.current = false;
     }
-  }, [activeQuery, initialBriefs]);
+  }, [activeQuery, briefs, initialBriefs]);
 
   const handleRefresh = useCallback(async () => {
     await refreshFeed("manual");
@@ -229,7 +235,7 @@ export function DashboardFeed({
         <RefreshFeedButton
           onClick={handleRefresh}
           loading={loading}
-          loadingMessage="Refreshing live briefings…"
+          loadingMessage="Checking for newer stories…"
           label="Refresh stories"
         />
       </div>
@@ -249,7 +255,7 @@ export function DashboardFeed({
             {briefs.length} {briefs.length === 1 ? "briefing" : "briefings"}
           </>
         ) : (
-          <>Latest briefings across equities, ETFs, and macro topics</>
+          <>Latest business and finance stories across markets, economy, policy, and companies</>
         )}
       </p>
       <p className="text-xs text-fin-subtle">
@@ -315,7 +321,7 @@ export function DashboardFeed({
         </p>
       ) : displayed.length === 0 ? (
         <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
-          No briefings found. Try AAPL, TSLA, SPY, QQQ, inflation, or interest rates. Mock data will be used when live providers are unavailable.
+          No stories found for this query. FinBrief will use mock fallback only when live providers are unavailable.
         </p>
       ) : (
         <div className="space-y-10">
