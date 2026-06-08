@@ -33,7 +33,8 @@ export function DashboardFeed({
 }) {
   const [briefs, setBriefs] = useState<Brief[]>([]);
   const [meta, setMeta] = useState(getInitialArticleFeedMeta);
-  const [loading, setLoading] = useState(false);
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(12);
   const [page, setPage] = useState(1);
@@ -46,11 +47,17 @@ export function DashboardFeed({
   const lastRefreshAtRef = useRef(Date.now());
   const activeQuery = query.trim() || DEFAULT_NEWS_QUERY;
 
+  function idsSignature(items: Brief[]): string {
+    return items.map((item) => item.id).join("|");
+  }
+
   const refreshFeed = useCallback(async (reason: "manual" | "auto" | "focus" | "midnight") => {
     if (isRefreshingRef.current) return;
     isRefreshingRef.current = true;
-    setLoading(true);
-    if (reason === "manual") setStatusMessage("Checking for newer stories…");
+    if (reason === "manual") {
+      setIsManualRefreshing(true);
+      setStatusMessage("Checking for newer stories…");
+    }
 
     const params = new URLSearchParams();
     params.set("q", activeQuery);
@@ -75,7 +82,11 @@ export function DashboardFeed({
             : apiBriefs.length > 0
               ? apiBriefs
               : initialBriefs;
-        setBriefs(nextBriefs);
+        const prevSig = idsSignature(briefs);
+        const nextSig = idsSignature(nextBriefs);
+        if (prevSig !== nextSig) {
+          setBriefs(nextBriefs);
+        }
         setMeta((prev) => ({
           refreshCount: prev.refreshCount + 1,
           lastUpdatedAt: payload.fetchedAt ?? new Date().toISOString(),
@@ -92,8 +103,8 @@ export function DashboardFeed({
         }
       }
     } finally {
-      setLoading(false);
       if (reason === "manual") {
+        setIsManualRefreshing(false);
         window.setTimeout(() => setStatusMessage(null), 1800);
       }
       isRefreshingRef.current = false;
@@ -122,7 +133,7 @@ export function DashboardFeed({
     }
     if (!hasMore || isRefreshingRef.current) return;
 
-    setLoading(true);
+    setIsLoadingMore(true);
     const nextPage = page + 1;
     const params = new URLSearchParams();
     params.set("q", activeQuery);
@@ -146,7 +157,7 @@ export function DashboardFeed({
       setHasMore(Boolean(payload.hasMore));
       if (payload.provider) setProviderLabel(payload.provider);
     } finally {
-      setLoading(false);
+      setIsLoadingMore(false);
     }
   }, [activeQuery, briefs.length, hasMore, page, visibleCount]);
 
@@ -238,7 +249,7 @@ export function DashboardFeed({
         </div>
         <RefreshFeedButton
           onClick={handleRefresh}
-          loading={loading}
+          loading={isManualRefreshing}
           loadingMessage="Checking for newer stories…"
           label="Refresh stories"
         />
@@ -318,7 +329,7 @@ export function DashboardFeed({
                 <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
                   {section.stories.map((brief, index) => (
                     <ArticleCard
-                      key={`${brief.id}-${meta.refreshCount}-${toTopicSlug(section.title)}`}
+                      key={`${brief.id}-${toTopicSlug(section.title)}`}
                       article={brief}
                       variant={index === 0 && section.title === "Top Stories" ? "hero" : "standard"}
                     />
@@ -336,9 +347,9 @@ export function DashboardFeed({
             type="button"
             className="fin-btn-secondary"
             onClick={handleLoadMore}
-            disabled={loading}
+            disabled={isLoadingMore || isManualRefreshing}
           >
-            {loading ? "Loading..." : "Load more stories"}
+            {isLoadingMore ? "Loading..." : "Load more stories"}
           </button>
         </div>
       )}
