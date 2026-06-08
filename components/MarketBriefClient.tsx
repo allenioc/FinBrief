@@ -9,7 +9,6 @@ import { buildMarketBriefFromBriefs } from "@/lib/market-brief-live";
 import { BROAD_NEWS_QUERY } from "@/lib/news-constants";
 import { formatProviderLabel, isLiveProvider } from "@/lib/news-source";
 import { formatLastUpdated, formatTodayAt } from "@/lib/date-format";
-import { FeedStatusBar } from "./FeedStatusBar";
 import { MarketBriefPanel } from "./MarketBriefPanel";
 import { RefreshFeedButton } from "./RefreshFeedButton";
 import { LastUpdatedLabel } from "./LastUpdatedLabel";
@@ -95,14 +94,15 @@ export function MarketBriefClient({ initialData }: { initialData: MarketBriefDat
       <p className="text-xs text-fin-subtle">
         {formatLastUpdated(meta.lastUpdatedAt)} · {articleCount} stories
       </p>
+      <p className="text-xs text-fin-subtle">
+        Last updated: {formatLastUpdated(meta.lastUpdatedAt)}
+      </p>
 
       {statusMessage && (
         <p className="text-sm font-medium text-fin-brand" role="status">
           {statusMessage}
         </p>
       )}
-
-      <FeedStatusBar lastUpdatedAt={meta.lastUpdatedAt} />
 
       {loading && !statusMessage && (
         <p className="text-sm font-medium text-fin-brand" role="status">

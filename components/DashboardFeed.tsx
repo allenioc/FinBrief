@@ -10,7 +10,6 @@ import { formatProviderLabel, isLiveProvider } from "@/lib/news-source";
 import { BROAD_NEWS_QUERY } from "@/lib/news-constants";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleCard } from "./ArticleCard";
-import { FeedStatusBar } from "./FeedStatusBar";
 import { RefreshFeedButton } from "./RefreshFeedButton";
 import { useWatchlist } from "./WatchlistProvider";
 
@@ -40,7 +39,6 @@ export function DashboardFeed({
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [providerLabel, setProviderLabel] = useState<string>("mock");
-  const [providerStats, setProviderStats] = useState<Array<{ provider: string; count: number }>>([]);
   const [timeWindow, setTimeWindow] = useState<"breaking" | "today" | "week">("today");
   const [hasLoadedApi, setHasLoadedApi] = useState(false);
   const { items: watchlistItems } = useWatchlist();
@@ -65,10 +63,8 @@ export function DashboardFeed({
         const payload = (await response.json()) as {
           briefs: Brief[];
           fetchedAt: string;
-          articleCount?: number;
           hasMore?: boolean;
           provider?: string;
-          providerStats?: Array<{ provider: string; count: number }>;
         };
         const prevIds = briefs.slice(0, 5).map((item) => item.id).join("|");
         const provider = payload.provider ?? "mock";
@@ -88,7 +84,6 @@ export function DashboardFeed({
         setPage(1);
         setHasMore(Boolean(payload.hasMore));
         setProviderLabel(provider);
-        setProviderStats(payload.providerStats ?? []);
         setHasLoadedApi(true);
         lastRefreshAtRef.current = Date.now();
         if (reason === "manual") {
@@ -140,7 +135,6 @@ export function DashboardFeed({
         briefs: Brief[];
         hasMore?: boolean;
         provider?: string;
-        providerStats?: Array<{ provider: string; count: number }>;
       };
       setBriefs((prev) => {
         const existing = new Set(prev.map((item) => item.id));
@@ -151,7 +145,6 @@ export function DashboardFeed({
       setPage(nextPage);
       setHasMore(Boolean(payload.hasMore));
       if (payload.provider) setProviderLabel(payload.provider);
-      if (payload.providerStats) setProviderStats(payload.providerStats);
     } finally {
       setLoading(false);
     }
@@ -231,7 +224,11 @@ export function DashboardFeed({
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <FeedStatusBar lastUpdatedAt={meta.lastUpdatedAt} showRefreshHint />
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-fin-subtle">
+          <span className="font-semibold text-fin-navy">Live feed</span>
+          <span>Last updated: {formatLastUpdated(meta.lastUpdatedAt)}</span>
+          <span>{briefs.length} stories</span>
+        </div>
         <RefreshFeedButton
           onClick={handleRefresh}
           loading={loading}
@@ -261,9 +258,6 @@ export function DashboardFeed({
       <p className="text-xs text-fin-subtle">
         Auto-updates every 10 minutes, on tab return, and daily at 12:00 AM local time.
       </p>
-      <p className="text-xs text-fin-subtle">
-        {formatLastUpdated(meta.lastUpdatedAt)} · {briefs.length} stories
-      </p>
       <div
         className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
           isLiveProvider(providerLabel)
@@ -275,24 +269,6 @@ export function DashboardFeed({
           ? `Live feed: ${formatProviderLabel(providerLabel)}`
           : "Mock fallback"}
       </div>
-      <div className="rounded-xl border border-fin-border bg-fin-muted/60 px-3 py-2 text-xs text-fin-subtle">
-        provider: <span className="font-semibold text-fin-navy">{providerLabel}</span>
-        {" · "}
-        articleCount: <span className="font-semibold text-fin-navy">{briefs.length}</span>
-        {" · "}
-        fetchedAt: <span className="font-semibold text-fin-navy">{meta.lastUpdatedAt}</span>
-        {" · "}
-        firstHeadline:{" "}
-        <span className="font-semibold text-fin-navy">
-          {briefs[0]?.headline ?? "n/a"}
-        </span>
-      </div>
-      {providerStats.length > 0 && (
-        <p className="text-xs text-fin-subtle">
-          Provider diagnostics:{" "}
-          {providerStats.map((entry) => `${entry.provider} ${entry.count}`).join(" • ")}
-        </p>
-      )}
 
       <div className="flex flex-wrap gap-2">
         {[

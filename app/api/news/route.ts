@@ -20,7 +20,8 @@ type CachedPayload = {
   briefs: ReturnType<typeof providerArticlesToBriefs>["briefs"];
 };
 
-const CACHE_TTL_MS = 15 * 60 * 1000;
+// Keep this short so deployed feed does not feel stale.
+const CACHE_TTL_MS = 5 * 60 * 1000;
 const cache = new Map<string, { expiresAt: number; payload: CachedPayload }>();
 
 function toMockPayload(query: string, page: number, limit: number): CachedPayload {
@@ -135,19 +136,25 @@ export async function GET(request: NextRequest) {
           query,
           providerArticles: providerResponse.articles,
         });
+        const sortedBriefs = [...mapped.briefs].sort(
+          (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+        );
+        const sortedArticles = [...mapped.normalized].sort(
+          (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+        );
         return {
           query,
           provider: providerResponse.provider,
           providerStats: providerResponse.providerStats,
           fetchedAt: providerResponse.fetchedAt,
-          articleCount: mapped.briefs.length,
+          articleCount: sortedBriefs.length,
           page,
           limit,
           hasMore: page * limit < providerResponse.totalAvailable,
           totalAvailable: providerResponse.totalAvailable,
-          articles: mapped.normalized,
-          normalized: mapped.normalized,
-          briefs: mapped.briefs,
+          articles: sortedArticles,
+          normalized: sortedArticles,
+          briefs: sortedBriefs,
         } satisfies CachedPayload;
       })()
     : toMockPayload(query, page, limit);
