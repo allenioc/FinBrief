@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
 import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
-import { formatDateTime, formatRelativeTime } from "@/lib/format";
+import { formatDateTime, formatPublishedTimeLabel } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
 import { ArticleThumbnail } from "./ArticleThumbnail";
@@ -72,7 +72,7 @@ export function ArticleCard({
             dateTime={article.publishedAt}
             title={formatDateTime(article.publishedAt)}
           >
-            {formatRelativeTime(article.publishedAt)}
+            {formatPublishedTimeLabel(article.publishedAt)}
           </time>
         </div>
 

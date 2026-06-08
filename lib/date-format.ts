@@ -5,22 +5,23 @@
 
 export function formatLastUpdated(iso: string, now: Date = new Date()): string {
   const updated = new Date(iso);
+  if (Number.isNaN(updated.getTime())) return "Daily edition updated recently";
   const diffMs = Math.max(0, now.getTime() - updated.getTime());
   const diffMin = Math.floor(diffMs / (1000 * 60));
 
-  if (diffMin < 1) return "Updated just now";
-  if (diffMin < 60) return `Updated ${diffMin} min ago`;
+  if (diffMin < 1) return "Daily edition updated just now";
+  if (diffMin < 60) return `Daily edition updated ${diffMin}m ago`;
 
   const diffHours = Math.floor(diffMin / 60);
   if (diffHours < 24 && isSameCalendarDay(updated, now)) {
-    return `Updated today at ${formatTimeOfDay(updated)}`;
+    return `Daily edition updated today at ${formatTimeOfDay(updated)}`;
   }
 
   if (diffHours < 48 && isYesterday(updated, now)) {
-    return `Updated yesterday at ${formatTimeOfDay(updated)}`;
+    return `Daily edition updated yesterday at ${formatTimeOfDay(updated)}`;
   }
 
-  return `Updated ${updated.toLocaleDateString("en-US", {
+  return `Daily edition updated ${updated.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",

@@ -8,6 +8,14 @@ function normalizeQuery(q: string): string {
   return q.trim().toLowerCase();
 }
 
+function dailyEditionKey(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `business-news-feed-${yyyy}-${mm}-${dd}`;
+}
+
 function matchesBrief(brief: Brief, query: string): boolean {
   const q = normalizeQuery(query);
   if (!q) return true;
@@ -92,6 +100,7 @@ export async function fetchBriefsFromApi(query: string): Promise<BriefResponse |
     const params = new URLSearchParams({ q: query || "" });
     params.set("limit", "24");
     params.set("page", "1");
+    params.set("edition", dailyEditionKey());
     const localhostBase = `http://localhost:${process.env.PORT ?? "3000"}`;
     const baseUrl =
       process.env.NEXT_PUBLIC_SITE_URL ??

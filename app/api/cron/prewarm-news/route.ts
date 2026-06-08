@@ -6,6 +6,14 @@ const PREWARM_QUERIES = [
   ...BROAD_FINANCE_QUERIES.slice(0, 8),
 ];
 
+function dailyEditionKey(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `business-news-feed-${yyyy}-${mm}-${dd}`;
+}
+
 function resolveBaseUrl(request: NextRequest): string {
   const envBase =
     process.env.NEXT_PUBLIC_SITE_URL ??
@@ -35,6 +43,7 @@ export async function GET(request: NextRequest) {
     if (query) params.set("q", query);
     params.set("limit", "24");
     params.set("page", "1");
+    params.set("edition", dailyEditionKey());
     const response = await fetch(`${baseUrl}/api/news?${params.toString()}`, {
       cache: "no-store",
       headers: secret ? { authorization: `Bearer ${secret}` } : undefined,

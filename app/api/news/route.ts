@@ -20,15 +20,28 @@ type CachedPayload = {
   briefs: ReturnType<typeof providerArticlesToBriefs>["briefs"];
 };
 
+function localDateKey(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function publishedTime(iso?: string): number {
   if (!iso) return 0;
   const value = new Date(iso).getTime();
   return Number.isFinite(value) ? value : 0;
 }
 
-// Keep this short so deployed feed does not feel stale.
-const CACHE_TTL_MS = 5 * 60 * 1000;
 const cache = new Map<string, { expiresAt: number; payload: CachedPayload }>();
+
+function msUntilNextLocalMidnight(): number {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(24, 0, 0, 0);
+  return Math.max(1000, next.getTime() - now.getTime());
+}
 
 function toMockPayload(query: string, page: number, limit: number): CachedPayload {
   const fallback = query.trim() ? searchBriefs(query) : MOCK_BRIEFS;
@@ -127,8 +140,11 @@ export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   const limit = Math.min(50, Math.max(8, Number(request.nextUrl.searchParams.get("limit") ?? "20")));
   const page = Math.max(1, Number(request.nextUrl.searchParams.get("page") ?? "1"));
-  const bust = request.nextUrl.searchParams.get("fresh") ?? request.nextUrl.searchParams.get("bust");
-  const key = `${query.toLowerCase()}::${limit}::${page}`;
+  const fresh = request.nextUrl.searchParams.get("fresh");
+  const bust = fresh === "true" || fresh === "1" || Boolean(request.nextUrl.searchParams.get("bust"));
+  const edition = request.nextUrl.searchParams.get("edition")?.trim() || `business-news-feed-${localDateKey()}`;
+  const queryKey = query || "broad-business-finance";
+  const key = `${queryKey.toLowerCase()}::${edition.toLowerCase()}::${limit}::${page}`;
 
   const cached = bust ? null : cache.get(key);
   if (!bust && cached && cached.expiresAt > Date.now()) {
@@ -167,7 +183,7 @@ export async function GET(request: NextRequest) {
 
   if (!bust) {
     cache.set(key, {
-      expiresAt: Date.now() + CACHE_TTL_MS,
+      expiresAt: Date.now() + msUntilNextLocalMidnight(),
       payload,
     });
   }

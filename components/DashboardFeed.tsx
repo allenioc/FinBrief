@@ -6,15 +6,12 @@ import {
   getInitialArticleFeedMeta,
 } from "@/lib/mock-refresh";
 import { formatLastUpdated } from "@/lib/date-format";
-import { formatProviderLabel, isLiveProvider } from "@/lib/news-source";
 import { BROAD_NEWS_QUERY } from "@/lib/news-constants";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleCard } from "./ArticleCard";
 import { RefreshFeedButton } from "./RefreshFeedButton";
 import { useWatchlist } from "./WatchlistProvider";
 
-const AUTO_REFRESH_MS = 10 * 60 * 1000;
-const FOCUS_REFRESH_COOLDOWN_MS = 2 * 60 * 1000;
 const DEFAULT_NEWS_QUERY = BROAD_NEWS_QUERY;
 
 function msUntilNextLocalMidnight(): number {
@@ -31,7 +28,6 @@ export function DashboardFeed({
   initialBriefs: Brief[];
   query: string;
 }) {
-  const [briefs, setBriefs] = useState<Brief[]>([]);
   const [meta, setMeta] = useState(getInitialArticleFeedMeta);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -39,20 +35,34 @@ export function DashboardFeed({
   const [visibleCount, setVisibleCount] = useState(12);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
-  const [providerLabel, setProviderLabel] = useState<string>("mock");
   const [timeWindow, setTimeWindow] = useState<"breaking" | "today" | "week">("today");
-  const [hasLoadedApi, setHasLoadedApi] = useState(false);
+  const [hasLoadedApi, setHasLoadedApi] = useState(initialBriefs.length > 0);
+  const [lastUpdateMode, setLastUpdateMode] = useState<"daily" | "manual">("daily");
   const { items: watchlistItems } = useWatchlist();
+  const briefsRef = useRef<Brief[]>(initialBriefs);
   const isRefreshingRef = useRef(false);
-  const lastRefreshAtRef = useRef(Date.now());
   const activeQuery = query.trim() || DEFAULT_NEWS_QUERY;
-  const isTopicQuery = activeQuery !== DEFAULT_NEWS_QUERY;
+  const isDefaultFeed = activeQuery === DEFAULT_NEWS_QUERY;
+
+  const [briefs, setBriefs] = useState<Brief[]>(initialBriefs);
+
+  useEffect(() => {
+    briefsRef.current = briefs;
+  }, [briefs]);
 
   function idsSignature(items: Brief[]): string {
     return items.map((item) => item.id).join("|");
   }
 
-  const refreshFeed = useCallback(async (reason: "manual" | "auto" | "focus" | "midnight") => {
+  function dailyEditionKey(): string {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    return `business-news-feed-${yyyy}-${mm}-${dd}`;
+  }
+
+  const refreshFeed = useCallback(async (reason: "manual" | "auto" | "midnight") => {
     if (isRefreshingRef.current) return;
     isRefreshingRef.current = true;
     if (reason === "manual") {
@@ -64,7 +74,12 @@ export function DashboardFeed({
     params.set("q", activeQuery);
     params.set("limit", "20");
     params.set("page", "1");
-    if (reason === "manual" || isTopicQuery) params.set("fresh", Date.now().toString());
+    if (reason === "manual") {
+      params.set("fresh", "true");
+      params.set("t", Date.now().toString());
+    } else {
+      params.set("edition", dailyEditionKey());
+    }
     try {
       const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
       if (response.ok) {
@@ -72,18 +87,11 @@ export function DashboardFeed({
           briefs: Brief[];
           fetchedAt: string;
           hasMore?: boolean;
-          provider?: string;
         };
-        const prevIds = briefs.slice(0, 5).map((item) => item.id).join("|");
-        const provider = payload.provider ?? "mock";
+        const prevIds = briefsRef.current.slice(0, 5).map((item) => item.id).join("|");
         const apiBriefs = payload.briefs ?? [];
-        const nextBriefs =
-          provider === "newsapi"
-            ? apiBriefs
-            : apiBriefs.length > 0
-              ? apiBriefs
-              : initialBriefs;
-        const prevSig = idsSignature(briefs);
+        const nextBriefs = apiBriefs.length > 0 ? apiBriefs : initialBriefs;
+        const prevSig = idsSignature(briefsRef.current);
         const nextSig = idsSignature(nextBriefs);
         if (prevSig !== nextSig) {
           setBriefs(nextBriefs);
@@ -95,9 +103,8 @@ export function DashboardFeed({
         setVisibleCount(12);
         setPage(1);
         setHasMore(Boolean(payload.hasMore));
-        setProviderLabel(provider);
         setHasLoadedApi(true);
-        lastRefreshAtRef.current = Date.now();
+        setLastUpdateMode(reason === "manual" ? "manual" : "daily");
         if (reason === "manual") {
           const nextIds = nextBriefs.slice(0, 5).map((item) => item.id).join("|");
           setStatusMessage(prevIds === nextIds ? "You're up to date." : "Stories updated.");
@@ -110,7 +117,7 @@ export function DashboardFeed({
       }
       isRefreshingRef.current = false;
     }
-  }, [activeQuery, briefs, initialBriefs, isTopicQuery]);
+  }, [activeQuery, initialBriefs]);
 
   const handleRefresh = useCallback(async () => {
     await refreshFeed("manual");
@@ -121,11 +128,14 @@ export function DashboardFeed({
   }, [refreshFeed]);
 
   useEffect(() => {
+    setBriefs(initialBriefs);
+    briefsRef.current = initialBriefs;
     setPage(1);
     setHasMore(false);
     setVisibleCount(12);
-    setHasLoadedApi(false);
-  }, [activeQuery]);
+    setHasLoadedApi(initialBriefs.length > 0);
+    setLastUpdateMode("daily");
+  }, [activeQuery, initialBriefs]);
 
   const handleLoadMore = useCallback(async () => {
     if (visibleCount < briefs.length) {
@@ -140,13 +150,13 @@ export function DashboardFeed({
     params.set("q", activeQuery);
     params.set("limit", "20");
     params.set("page", String(nextPage));
+    params.set("edition", dailyEditionKey());
     try {
       const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
       if (!response.ok) return;
       const payload = (await response.json()) as {
         briefs: Brief[];
         hasMore?: boolean;
-        provider?: string;
       };
       setBriefs((prev) => {
         const existing = new Set(prev.map((item) => item.id));
@@ -156,16 +166,13 @@ export function DashboardFeed({
       setVisibleCount((prev) => prev + 12);
       setPage(nextPage);
       setHasMore(Boolean(payload.hasMore));
-      if (payload.provider) setProviderLabel(payload.provider);
     } finally {
       setIsLoadingMore(false);
     }
   }, [activeQuery, briefs.length, hasMore, page, visibleCount]);
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      refreshFeed("auto");
-    }, AUTO_REFRESH_MS);
+    if (!isDefaultFeed) return;
     let midnightTimer: number | undefined;
 
     const scheduleMidnightRefresh = () => {
@@ -176,29 +183,10 @@ export function DashboardFeed({
     };
     scheduleMidnightRefresh();
 
-    const handleFocusRefresh = () => {
-      const elapsed = Date.now() - lastRefreshAtRef.current;
-      if (elapsed >= FOCUS_REFRESH_COOLDOWN_MS) {
-        refreshFeed("focus");
-      }
-    };
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        handleFocusRefresh();
-      }
-    };
-
-    window.addEventListener("focus", handleFocusRefresh);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
     return () => {
-      window.clearInterval(interval);
       if (midnightTimer) window.clearTimeout(midnightTimer);
-      window.removeEventListener("focus", handleFocusRefresh);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [refreshFeed]);
+  }, [isDefaultFeed, refreshFeed]);
 
   const watchlistSymbols = watchlistItems.map((item) => item.symbol.toLowerCase());
   const sortedBriefs = [...briefs].sort((a, b) => {
@@ -245,7 +233,11 @@ export function DashboardFeed({
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-fin-subtle">
           <span className="font-semibold text-fin-navy">Live feed</span>
-          <span>Last updated: {formatLastUpdated(meta.lastUpdatedAt)}</span>
+          <span>
+            {lastUpdateMode === "manual"
+              ? formatLastUpdated(meta.lastUpdatedAt).replace("Daily edition updated", "Last refreshed")
+              : formatLastUpdated(meta.lastUpdatedAt)}
+          </span>
           <span>{briefs.length} stories</span>
         </div>
         <RefreshFeedButton
@@ -261,33 +253,6 @@ export function DashboardFeed({
           {statusMessage}
         </p>
       )}
-
-      <p className="text-sm text-fin-subtle">
-        {query ? (
-          <>
-            Results for{" "}
-            <span className="font-mono font-semibold text-fin-navy">{query}</span>
-            {" · "}
-            {briefs.length} {briefs.length === 1 ? "briefing" : "briefings"}
-          </>
-        ) : (
-          <>Latest business and finance stories across markets, economy, policy, and companies</>
-        )}
-      </p>
-      <p className="text-xs text-fin-subtle">
-        Auto-updates every 10 minutes, on tab return, and daily at 12:00 AM local time.
-      </p>
-      <div
-        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-          isLiveProvider(providerLabel)
-            ? "bg-status-positive-bg text-status-positive"
-            : "bg-status-warning-bg text-status-warning"
-        }`}
-      >
-        {isLiveProvider(providerLabel)
-          ? `Live feed: ${formatProviderLabel(providerLabel)}`
-          : "Mock fallback"}
-      </div>
 
       <div className="flex flex-wrap gap-2">
         {[
@@ -312,7 +277,7 @@ export function DashboardFeed({
 
       {!hasLoadedApi ? (
         <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
-          Loading live stories from /api/news...
+          Loading stories...
         </p>
       ) : displayed.length === 0 ? (
         <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
