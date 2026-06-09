@@ -9,7 +9,6 @@ import { formatLastUpdated } from "@/lib/date-format";
 import { BROAD_NEWS_QUERY } from "@/lib/news-constants";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleCard } from "./ArticleCard";
-import { RefreshFeedButton } from "./RefreshFeedButton";
 import { useWatchlist } from "./WatchlistProvider";
 
 const DEFAULT_NEWS_QUERY = BROAD_NEWS_QUERY;
@@ -29,15 +28,12 @@ export function DashboardFeed({
   query: string;
 }) {
   const [meta, setMeta] = useState(getInitialArticleFeedMeta);
-  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [visibleCount, setVisibleCount] = useState(12);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [timeWindow, setTimeWindow] = useState<"breaking" | "today" | "week">("week");
   const [hasLoadedApi, setHasLoadedApi] = useState(initialBriefs.length > 0);
-  const [lastUpdateMode, setLastUpdateMode] = useState<"daily" | "manual">("daily");
   const [apiError, setApiError] = useState<string | null>(null);
   const { items: watchlistItems } = useWatchlist();
   const briefsRef = useRef<Brief[]>(initialBriefs);
@@ -63,25 +59,16 @@ export function DashboardFeed({
     return `business-news-feed-${yyyy}-${mm}-${dd}`;
   }
 
-  const refreshFeed = useCallback(async (reason: "manual" | "auto" | "midnight") => {
+  const refreshFeed = useCallback(async () => {
     if (isRefreshingRef.current) return;
     isRefreshingRef.current = true;
-    if (reason === "manual") {
-      setIsManualRefreshing(true);
-      setStatusMessage("Checking for newer stories…");
-    }
 
     const params = new URLSearchParams();
     if (!isDefaultFeed) params.set("q", activeQuery);
     params.set("timeRange", isDefaultFeed ? "week" : timeWindow);
     params.set("limit", "20");
     params.set("page", "1");
-    if (reason === "manual") {
-      params.set("fresh", "true");
-      params.set("t", Date.now().toString());
-    } else {
-      params.set("edition", dailyEditionKey());
-    }
+    params.set("edition", dailyEditionKey());
     try {
       const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
       if (response.ok) {
@@ -93,7 +80,6 @@ export function DashboardFeed({
           errorMessage?: string;
         };
         setApiError(payload.errorMessage ?? null);
-        const prevIds = briefsRef.current.slice(0, 5).map((item) => item.id).join("|");
         const apiBriefs = payload.briefs ?? [];
         const provider = payload.provider ?? "mock";
         const nextBriefs =
@@ -111,31 +97,18 @@ export function DashboardFeed({
         setPage(1);
         setHasMore(Boolean(payload.hasMore));
         setHasLoadedApi(true);
-        setLastUpdateMode(reason === "manual" ? "manual" : "daily");
-        if (reason === "manual") {
-          const nextIds = nextBriefs.slice(0, 5).map((item) => item.id).join("|");
-          setStatusMessage(prevIds === nextIds ? "You're up to date." : "Stories updated.");
-        }
       } else {
         setApiError("Live provider request failed. Please retry later.");
       }
     } catch {
       setApiError("Live provider request failed. Please retry later.");
     } finally {
-      if (reason === "manual") {
-        setIsManualRefreshing(false);
-        window.setTimeout(() => setStatusMessage(null), 1800);
-      }
       isRefreshingRef.current = false;
     }
   }, [activeQuery, initialBriefs, isDefaultFeed, timeWindow]);
 
-  const handleRefresh = useCallback(async () => {
-    await refreshFeed("manual");
-  }, [refreshFeed]);
-
   useEffect(() => {
-    refreshFeed("auto");
+    refreshFeed();
     // Intentionally tied to query/default feed changes only.
     // We avoid refetching on tab switches to reduce provider churn/rate limits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,7 +121,6 @@ export function DashboardFeed({
     setHasMore(false);
     setVisibleCount(12);
     setHasLoadedApi(initialBriefs.length > 0);
-    setLastUpdateMode("daily");
     setTimeWindow("week");
     setApiError(null);
   }, [activeQuery, initialBriefs]);
@@ -196,7 +168,7 @@ export function DashboardFeed({
 
     const scheduleMidnightRefresh = () => {
       midnightTimer = window.setTimeout(async () => {
-        await refreshFeed("midnight");
+        await refreshFeed();
         scheduleMidnightRefresh();
       }, msUntilNextLocalMidnight());
     };
@@ -253,27 +225,13 @@ export function DashboardFeed({
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-fin-subtle">
-          <span className="font-semibold text-fin-navy">Live feed</span>
-          <span>
-            {lastUpdateMode === "manual"
-              ? formatLastUpdated(meta.lastUpdatedAt).replace("Daily edition updated", "Last refreshed")
-              : formatLastUpdated(meta.lastUpdatedAt)}
-          </span>
+          <span className="font-semibold text-fin-navy">Daily edition</span>
+          <span>{formatLastUpdated(meta.lastUpdatedAt)}</span>
           <span>{briefs.length} stories</span>
         </div>
-        <RefreshFeedButton
-          onClick={handleRefresh}
-          loading={isManualRefreshing}
-          loadingMessage="Checking for newer stories…"
-          label="Refresh stories"
-        />
+        <p className="text-xs text-fin-subtle">Daily edition updates once per day.</p>
       </div>
 
-      {statusMessage && (
-        <p className="text-sm font-medium text-fin-brand" role="status">
-          {statusMessage}
-        </p>
-      )}
       {apiError && (
         <p className="text-sm font-medium text-status-warning" role="status">
           {apiError}
@@ -309,7 +267,7 @@ export function DashboardFeed({
         <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
           {timeWindow === "today"
             ? "No fresh stories found today. Try This week or check back later."
-            : "No fresh stories found. Try Refresh stories or check back later."}
+            : "No fresh stories found. The daily edition updates once per day — check back later."}
         </p>
       ) : (
         <div className="space-y-10">
@@ -341,7 +299,7 @@ export function DashboardFeed({
             type="button"
             className="fin-btn-secondary"
             onClick={handleLoadMore}
-            disabled={isLoadingMore || isManualRefreshing}
+            disabled={isLoadingMore}
           >
             {isLoadingMore ? "Loading..." : "Load more stories"}
           </button>

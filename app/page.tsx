@@ -23,7 +23,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
   const isTopicView = query.length > 0;
   const title = isTopicView ? `${query} news feed` : "Understand markets with clarity";
   const description = isTopicView
-    ? `Showing latest stories for ${query}. Refresh to pull the newest live coverage for this topic.`
+    ? `Showing latest stories for ${query} from the current daily edition.`
     : "Search any stock, ETF, index, or macro topic. FinBrief delivers structured, educational summaries with sentiment, impact, and source context.";
 
   return (
