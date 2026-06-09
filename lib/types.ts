@@ -138,6 +138,7 @@ export interface TopicProfile {
 export interface BriefResponse {
   query: string;
   briefs: Brief[];
+  provider?: string;
 }
 
 export interface IndexMood {

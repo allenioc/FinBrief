@@ -110,8 +110,8 @@ export async function fetchBriefsFromApi(query: string): Promise<BriefResponse |
     const url = resolvedBase ? `${resolvedBase}/api/news?${params}` : `/api/news?${params}`;
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) return null;
-    const payload = (await res.json()) as { query: string; briefs: Brief[] };
-    return { query: payload.query, briefs: payload.briefs };
+    const payload = (await res.json()) as { query: string; briefs: Brief[]; provider?: string };
+    return { query: payload.query, briefs: payload.briefs, provider: payload.provider };
   } catch {
     return null;
   }
@@ -128,9 +128,19 @@ function isEnrichedBrief(brief: Brief): boolean {
 
 export async function getBriefs(query: string): Promise<Brief[]> {
   const api = await fetchBriefsFromApi(query);
-  if (api?.briefs?.length && api.briefs.every(isEnrichedBrief)) {
-    cacheBriefs(api.briefs);
-    return api.briefs;
+  if (api) {
+    const briefs = api.briefs.filter(isEnrichedBrief);
+    if (briefs.length > 0) {
+      cacheBriefs(briefs);
+    }
+    // Trust live provider responses (including empty results) so we don't silently
+    // fall back to stale demo cards when the provider is online.
+    if (api.provider && api.provider !== "mock") {
+      return briefs;
+    }
+    if (briefs.length > 0) {
+      return briefs;
+    }
   }
   const fallback = searchBriefs(query);
   cacheBriefs(fallback);

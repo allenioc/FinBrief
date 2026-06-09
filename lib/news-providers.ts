@@ -287,11 +287,50 @@ function configuredProviders() {
 }
 
 function resolveQueryBatch(query: string, page: number): string[] {
+  const perPage = 8;
   const normalized = query.trim().toLowerCase();
-  if (normalized && normalized !== BROAD_NEWS_QUERY) return [query];
+  if (normalized && normalized !== BROAD_NEWS_QUERY) {
+    const directByPhrase = new Set<string>();
+    const direct = new Set<string>();
+    for (const candidate of BROAD_FINANCE_QUERIES) {
+      if (normalized.includes(candidate.toLowerCase())) {
+        directByPhrase.add(candidate);
+        direct.add(candidate);
+      }
+    }
+    const tokenized = normalized.split(/[\s,;/]+/).filter(Boolean);
+    for (const token of tokenized) {
+      for (const candidate of BROAD_FINANCE_QUERIES) {
+        if (candidate.toLowerCase().includes(token)) {
+          direct.add(candidate);
+        }
+      }
+    }
+    const exactBroadIndex = BROAD_FINANCE_QUERIES.findIndex(
+      (candidate) => candidate.toLowerCase() === normalized
+    );
+    if (exactBroadIndex >= 0) {
+      return Array.from(
+        { length: perPage },
+        (_, i) => BROAD_FINANCE_QUERIES[(exactBroadIndex + i) % BROAD_FINANCE_QUERIES.length]
+      );
+    }
+    // If a user enters a broad phrase (e.g. "business finance markets"),
+    // fan out to multiple broad queries instead of one strict full-string query.
+    if (direct.size >= 2) {
+      const selected = [...directByPhrase];
+      let cursor = ((Math.max(1, page) - 1) * perPage) % BROAD_FINANCE_QUERIES.length;
+      while (selected.length < perPage) {
+        const candidate = BROAD_FINANCE_QUERIES[cursor];
+        if (!selected.includes(candidate)) selected.push(candidate);
+        cursor = (cursor + 1) % BROAD_FINANCE_QUERIES.length;
+      }
+      return selected.slice(0, perPage);
+    }
+    return [query];
+  }
 
   // Keep request volume bounded while still rotating broad themes over pages.
-  const perPage = 8;
   const start = ((Math.max(1, page) - 1) * perPage) % BROAD_FINANCE_QUERIES.length;
   const selected: string[] = [];
   for (let i = 0; i < perPage; i += 1) {

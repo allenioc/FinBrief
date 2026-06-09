@@ -87,10 +87,13 @@ export function DashboardFeed({
           briefs: Brief[];
           fetchedAt: string;
           hasMore?: boolean;
+          provider?: string;
         };
         const prevIds = briefsRef.current.slice(0, 5).map((item) => item.id).join("|");
         const apiBriefs = payload.briefs ?? [];
-        const nextBriefs = apiBriefs.length > 0 ? apiBriefs : initialBriefs;
+        const provider = payload.provider ?? "mock";
+        const nextBriefs =
+          provider === "mock" && apiBriefs.length === 0 ? initialBriefs : apiBriefs;
         const prevSig = idsSignature(briefsRef.current);
         const nextSig = idsSignature(nextBriefs);
         if (prevSig !== nextSig) {
