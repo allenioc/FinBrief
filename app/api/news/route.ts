@@ -7,6 +7,7 @@ import {
 } from "@/lib/news-providers";
 import { providerArticlesToBriefs } from "@/lib/news-normalizer";
 import { searchBriefs } from "@/lib/briefs";
+import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
 
 type CachedPayload = {
   query: string;
@@ -53,14 +54,59 @@ function inTimeRange(iso: string | undefined, range: ProviderTimeRange): boolean
   return ageMs <= 7 * 24 * 60 * 60 * 1000;
 }
 
-const cache = new Map<string, { expiresAt: number; payload: CachedPayload }>();
-const lastSuccessfulByScope = new Map<string, CachedPayload>();
+type EditionRecord = {
+  editionDate: string;
+  savedAt: string;
+  payload: CachedPayload;
+};
 
-function msUntilNextLocalMidnight(): number {
-  const now = new Date();
-  const next = new Date(now);
-  next.setHours(24, 0, 0, 0);
-  return Math.max(1000, next.getTime() - now.getTime());
+type LastGoodRecord = {
+  fetchedAt: string;
+  payload: CachedPayload;
+};
+
+type CacheDebugFields = {
+  cacheStatus: string;
+  cacheBackend: string;
+  editionDate: string;
+  lastSuccessfulFetchedAt: string | null;
+  reasonProviderFetchWasSkipped: string | null;
+  reasonProviderFetchWasAllowed: string | null;
+};
+
+/**
+ * After a failed live fetch, wait before retrying so repeated page loads
+ * (or redeploys) cannot hammer rate-limited providers.
+ */
+const FAILURE_RETRY_COOLDOWN_MS = 10 * 60 * 1000;
+const failureCooldownByScope = new Map<string, number>();
+
+function adminSecret(): string {
+  return process.env.ADMIN_REFRESH_TOKEN ?? process.env.CRON_SECRET ?? "";
+}
+
+function isAdminRequest(request: NextRequest): { authorized: boolean; note?: string } {
+  const secret = adminSecret();
+  if (!secret) {
+    return {
+      authorized: true,
+      note: "No ADMIN_REFRESH_TOKEN or CRON_SECRET configured; refresh/debug are open. Set one to lock them down.",
+    };
+  }
+  const provided =
+    request.nextUrl.searchParams.get("key") ??
+    request.headers.get("x-admin-key") ??
+    request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+    "";
+  return { authorized: provided === secret };
+}
+
+function withDebugFields(payload: CachedPayload, fields: Omit<CacheDebugFields, "cacheBackend">) {
+  return {
+    ...payload,
+    ...fields,
+    cacheBackend: cacheBackendDescription(),
+  };
 }
 
 function toMockPayload(query: string, page: number, limit: number): CachedPayload {
@@ -173,7 +219,22 @@ export async function GET(request: NextRequest) {
     providerParam === "alphavantage"
       ? providerParam
       : undefined;
+  const admin = isAdminRequest(request);
+  const today = localDateKey();
+  const queryKey = (query || "broad-business-finance").toLowerCase();
+  const editionKey = `edition::${queryKey}::${timeRange}::${limit}::${page}`;
+  const lastGoodKey = `lastgood::${queryKey}::${timeRange}`;
+  const scopeKey = `${queryKey}::${timeRange}`;
+
   if (debug) {
+    // Debug mode triggers a live provider fetch, so it is admin-only when a
+    // secret is configured. It is never linked from the normal UI.
+    if (!admin.authorized) {
+      return NextResponse.json(
+        { ok: false, error: "Unauthorized. Pass ?key=... or x-admin-key header." },
+        { status: 401 }
+      );
+    }
     const providerRun = await fetchProviderNews(query, limit, page, timeRange, {
       providerFilter,
     });
@@ -191,6 +252,8 @@ export async function GET(request: NextRequest) {
             },
           ]
         : []);
+    const lastGood = await cacheGet<LastGoodRecord>(lastGoodKey);
+    const savedEdition = await cacheGet<EditionRecord>(editionKey);
     return NextResponse.json({
       providers: getProviderDebugStatuses(),
       configured: {
@@ -206,24 +269,98 @@ export async function GET(request: NextRequest) {
       providerErrorMessage: providerRun?.errorMessage,
       mergedArticleCount: providerRun?.articles?.length ?? 0,
       finalProvider: providerRun?.provider ?? "none",
+      cacheBackend: cacheBackendDescription(),
+      durableCacheConfigured: hasDurableCache(),
+      editionDate: today,
+      savedEditionDate: savedEdition?.value.editionDate ?? null,
+      savedEditionTier: savedEdition?.tier ?? null,
+      lastSuccessfulFetchedAt: lastGood?.value.fetchedAt ?? null,
+      adminNote: admin.note,
     });
   }
-  const bust = fresh === "true" || fresh === "1" || Boolean(request.nextUrl.searchParams.get("bust"));
-  const edition = request.nextUrl.searchParams.get("edition")?.trim() || `business-news-feed-${localDateKey()}`;
-  const queryKey = query || "broad-business-finance";
-  const key = `${queryKey.toLowerCase()}::${edition.toLowerCase()}::${timeRange}::${limit}::${page}`;
-  const scopeKey = `${queryKey.toLowerCase()}::${timeRange}`;
 
-  const cached = bust ? null : cache.get(key);
-  if (
-    !bust &&
-    cached &&
-    cached.expiresAt > Date.now() &&
-    (cached.payload.articleCount > 0 || cached.payload.provider === "mock")
-  ) {
-    return NextResponse.json(cached.payload);
+  const freshRequested =
+    fresh === "true" || fresh === "1" || Boolean(request.nextUrl.searchParams.get("bust"));
+  const adminRefresh = freshRequested && admin.authorized;
+  const freshIgnoredNote =
+    freshRequested && !admin.authorized ? "fresh_param_ignored_unauthorized" : null;
+
+  let reasonAllowed: string | null = null;
+
+  if (!adminRefresh) {
+    const savedEdition = await cacheGet<EditionRecord>(editionKey);
+
+    // 1) Saved edition for today: serve it, never touch providers.
+    if (
+      savedEdition &&
+      savedEdition.value.editionDate === today &&
+      savedEdition.value.payload.articleCount > 0
+    ) {
+      return NextResponse.json(
+        withDebugFields(savedEdition.value.payload, {
+          cacheStatus: `hit:${savedEdition.tier}`,
+          editionDate: savedEdition.value.editionDate,
+          lastSuccessfulFetchedAt: savedEdition.value.payload.fetchedAt,
+          reasonProviderFetchWasSkipped: "saved_edition_for_today_exists",
+          reasonProviderFetchWasAllowed: null,
+        })
+      );
+    }
+
+    reasonAllowed = !savedEdition
+      ? "no_saved_edition"
+      : savedEdition.value.editionDate !== today
+        ? "edition_date_changed_and_today_not_fetched_yet"
+        : "saved_edition_has_zero_stories";
+
+    // 2) Recent provider failure: serve the newest saved data instead of retrying.
+    const retryAt = failureCooldownByScope.get(scopeKey) ?? 0;
+    if (retryAt > Date.now()) {
+      const reasonSkipped = `recent_provider_failure_retry_in_${Math.ceil((retryAt - Date.now()) / 1000)}s`;
+      const lastGood = await cacheGet<LastGoodRecord>(lastGoodKey);
+      const fallback =
+        lastGood && lastGood.value.payload.articleCount > 0
+          ? { payload: lastGood.value.payload, tier: lastGood.tier, fetchedAt: lastGood.value.fetchedAt }
+          : savedEdition && savedEdition.value.payload.articleCount > 0
+            ? {
+                payload: savedEdition.value.payload,
+                tier: savedEdition.tier,
+                fetchedAt: savedEdition.value.payload.fetchedAt,
+              }
+            : null;
+      if (fallback) {
+        return NextResponse.json(
+          withDebugFields(
+            {
+              ...fallback.payload,
+              errorMessage:
+                "Live providers are temporarily unavailable. Showing the most recent saved edition.",
+            },
+            {
+              cacheStatus: `stale_fallback:${fallback.tier}`,
+              editionDate: today,
+              lastSuccessfulFetchedAt: fallback.fetchedAt,
+              reasonProviderFetchWasSkipped: reasonSkipped,
+              reasonProviderFetchWasAllowed: null,
+            }
+          )
+        );
+      }
+      return NextResponse.json(
+        withDebugFields(toMockPayload(query, page, limit), {
+          cacheStatus: "mock_fallback",
+          editionDate: today,
+          lastSuccessfulFetchedAt: null,
+          reasonProviderFetchWasSkipped: reasonSkipped,
+          reasonProviderFetchWasAllowed: null,
+        })
+      );
+    }
+  } else {
+    reasonAllowed = "authorized_admin_refresh";
   }
 
+  // 3) Cache rules allow a live fetch: this is the only place providers are called.
   const providerResponse = await fetchProviderNews(query, limit, page, timeRange);
   let payload = providerResponse
     ? (() => {
@@ -260,25 +397,53 @@ export async function GET(request: NextRequest) {
       })()
     : toMockPayload(query, page, limit);
 
-  if (payload.provider !== "mock" && payload.articleCount > 0) {
-    lastSuccessfulByScope.set(scopeKey, payload);
-  } else if (payload.provider === "error" || payload.articleCount === 0) {
-    const stale = lastSuccessfulByScope.get(scopeKey);
-    if (stale && stale.articleCount > 0) {
+  const isSuccessfulLiveFetch =
+    payload.provider !== "mock" && payload.provider !== "error" && payload.articleCount > 0;
+
+  let cacheStatus: string;
+  let lastSuccessfulFetchedAt: string | null = null;
+
+  if (isSuccessfulLiveFetch) {
+    failureCooldownByScope.delete(scopeKey);
+    await Promise.all([
+      cacheSet(editionKey, {
+        editionDate: today,
+        savedAt: new Date().toISOString(),
+        payload,
+      } satisfies EditionRecord),
+      cacheSet(lastGoodKey, {
+        fetchedAt: payload.fetchedAt,
+        payload,
+      } satisfies LastGoodRecord),
+    ]);
+    cacheStatus = "live_fetch_saved_as_todays_edition";
+    lastSuccessfulFetchedAt = payload.fetchedAt;
+  } else {
+    // Never save 0-story or rate-limited/error responses as a successful edition.
+    if (providerResponse) {
+      failureCooldownByScope.set(scopeKey, Date.now() + FAILURE_RETRY_COOLDOWN_MS);
+    }
+    const lastGood = await cacheGet<LastGoodRecord>(lastGoodKey);
+    if (lastGood && lastGood.value.payload.articleCount > 0) {
+      lastSuccessfulFetchedAt = lastGood.value.fetchedAt;
       payload = {
-        ...stale,
-        fetchedAt: new Date().toISOString(),
-        errorMessage: payload.errorMessage ?? "Live provider unavailable. Showing latest available stories.",
+        ...lastGood.value.payload,
+        errorMessage:
+          payload.errorMessage ?? "Live provider unavailable. Showing latest available stories.",
       };
+      cacheStatus = `stale_fallback:${lastGood.tier}`;
+    } else {
+      cacheStatus = payload.provider === "mock" ? "mock_fallback" : "live_fetch_failed_no_saved_edition";
     }
   }
 
-  if (!bust && (payload.articleCount > 0 || payload.provider === "mock")) {
-    cache.set(key, {
-      expiresAt: Date.now() + msUntilNextLocalMidnight(),
-      payload,
-    });
-  }
-
-  return NextResponse.json(payload);
+  return NextResponse.json(
+    withDebugFields(payload, {
+      cacheStatus,
+      editionDate: today,
+      lastSuccessfulFetchedAt,
+      reasonProviderFetchWasSkipped: freshIgnoredNote,
+      reasonProviderFetchWasAllowed: reasonAllowed,
+    })
+  );
 }
