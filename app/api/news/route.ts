@@ -54,6 +54,7 @@ function inTimeRange(iso: string | undefined, range: ProviderTimeRange): boolean
 }
 
 const cache = new Map<string, { expiresAt: number; payload: CachedPayload }>();
+const lastSuccessfulByScope = new Map<string, CachedPayload>();
 
 function msUntilNextLocalMidnight(): number {
   const now = new Date();
@@ -175,14 +176,20 @@ export async function GET(request: NextRequest) {
   const edition = request.nextUrl.searchParams.get("edition")?.trim() || `business-news-feed-${localDateKey()}`;
   const queryKey = query || "broad-business-finance";
   const key = `${queryKey.toLowerCase()}::${edition.toLowerCase()}::${timeRange}::${limit}::${page}`;
+  const scopeKey = `${queryKey.toLowerCase()}::${timeRange}`;
 
   const cached = bust ? null : cache.get(key);
-  if (!bust && cached && cached.expiresAt > Date.now()) {
+  if (
+    !bust &&
+    cached &&
+    cached.expiresAt > Date.now() &&
+    (cached.payload.articleCount > 0 || cached.payload.provider === "mock")
+  ) {
     return NextResponse.json(cached.payload);
   }
 
   const providerResponse = await fetchProviderNews(query, limit, page, timeRange);
-  const payload = providerResponse
+  let payload = providerResponse
     ? (() => {
         const mapped = providerArticlesToBriefs({
           query,
@@ -217,7 +224,20 @@ export async function GET(request: NextRequest) {
       })()
     : toMockPayload(query, page, limit);
 
-  if (!bust) {
+  if (payload.provider !== "mock" && payload.articleCount > 0) {
+    lastSuccessfulByScope.set(scopeKey, payload);
+  } else if (payload.provider === "error" || payload.articleCount === 0) {
+    const stale = lastSuccessfulByScope.get(scopeKey);
+    if (stale && stale.articleCount > 0) {
+      payload = {
+        ...stale,
+        fetchedAt: new Date().toISOString(),
+        errorMessage: payload.errorMessage ?? "Live provider unavailable. Showing latest available stories.",
+      };
+    }
+  }
+
+  if (!bust && (payload.articleCount > 0 || payload.provider === "mock")) {
     cache.set(key, {
       expiresAt: Date.now() + msUntilNextLocalMidnight(),
       payload,
