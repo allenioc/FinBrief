@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
 import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
@@ -24,6 +26,16 @@ export function ArticleCard({
   const isHero = variant === "hero";
   const watchlistItem = watchlistItemFromBrief(article);
 
+  // Stash the full article so /brief/[id] can render it instantly without
+  // depending on server-side caches (which are per-instance on Vercel).
+  const stashArticle = () => {
+    try {
+      sessionStorage.setItem(`finbrief-article-${article.id}`, JSON.stringify(article));
+    } catch {
+      // Storage may be unavailable (private mode); the brief page has API fallbacks.
+    }
+  };
+
   return (
     <article
       className={`group fin-card fin-card-hover flex flex-col overflow-hidden ${
@@ -32,6 +44,7 @@ export function ArticleCard({
     >
       <Link
         href={`/brief/${article.id}`}
+        onClick={stashArticle}
         className={`relative block overflow-hidden bg-fin-muted ${
           isHero ? "aspect-[16/10]" : "aspect-[16/10]"
         }`}
@@ -81,7 +94,7 @@ export function ArticleCard({
             {article.source}
             {article.author ? ` · ${article.author}` : ""}
           </p>
-          <Link href={`/brief/${article.id}`}>
+          <Link href={`/brief/${article.id}`} onClick={stashArticle}>
             <h3
               className={`mt-2 font-bold leading-snug text-fin-navy transition-colors group-hover:text-fin-brand line-clamp-2 ${
                 isHero ? "text-xl sm:text-2xl" : "text-lg"
@@ -113,7 +126,7 @@ export function ArticleCard({
         </div>
 
         <div className="flex items-center justify-between gap-3">
-          <Link href={`/brief/${article.id}`} className="fin-link text-sm font-semibold">
+          <Link href={`/brief/${article.id}`} onClick={stashArticle} className="fin-link text-sm font-semibold">
             Read FinBrief summary →
           </Link>
           <div className="flex items-center gap-2">

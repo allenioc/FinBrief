@@ -1,11 +1,7 @@
-import Link from "next/link";
-import { notFound } from "next/navigation";
-import { ArticleDetail } from "@/components/ArticleDetail";
-import { BriefFeedBar } from "@/components/BriefFeedBar";
+import { ArticleBriefClient } from "@/components/ArticleBriefClient";
 import { Disclaimer } from "@/components/Disclaimer";
 import { UpdateScheduleFooter } from "@/components/UpdateScheduleFooter";
-import { findArticleById } from "@/lib/article-lookup";
-import { toTopicSlug } from "@/lib/slug";
+import { findArticleLocally } from "@/lib/article-lookup";
 
 interface BriefPageProps {
   params: Promise<{ id: string }>;
@@ -13,24 +9,14 @@ interface BriefPageProps {
 
 export default async function BriefPage({ params }: BriefPageProps) {
   const { id } = await params;
-  const article = await findArticleById(id);
-
-  if (!article) {
-    notFound();
-  }
-
-  const backHref =
-    article.ticker !== "—" ? `/topic/${toTopicSlug(article.ticker)}` : "/";
+  // Best-effort server lookup (article index + mock data). When this misses —
+  // e.g. a different serverless instance — the client resolves the article
+  // from sessionStorage or the API.
+  const article = await findArticleLocally(id);
 
   return (
     <div className="mx-auto max-w-shell px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
-      <Link href={backHref} className="fin-link text-sm">
-        ← Back
-      </Link>
-      <div className="mt-6">
-        <BriefFeedBar />
-        <ArticleDetail article={article} />
-      </div>
+      <ArticleBriefClient id={id} initialArticle={article} />
       <div className="mt-10">
         <Disclaimer />
       </div>
