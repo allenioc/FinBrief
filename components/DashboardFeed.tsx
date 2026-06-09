@@ -32,7 +32,6 @@ export function DashboardFeed({
   const [visibleCount, setVisibleCount] = useState(12);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
-  const [timeWindow, setTimeWindow] = useState<"breaking" | "today" | "week">("week");
   const [hasLoadedApi, setHasLoadedApi] = useState(initialBriefs.length > 0);
   const [apiError, setApiError] = useState<string | null>(null);
   const { items: watchlistItems } = useWatchlist();
@@ -65,7 +64,7 @@ export function DashboardFeed({
 
     const params = new URLSearchParams();
     if (!isDefaultFeed) params.set("q", activeQuery);
-    params.set("timeRange", isDefaultFeed ? "week" : timeWindow);
+    params.set("timeRange", "week");
     params.set("limit", "20");
     params.set("page", "1");
     params.set("edition", dailyEditionKey());
@@ -105,7 +104,7 @@ export function DashboardFeed({
     } finally {
       isRefreshingRef.current = false;
     }
-  }, [activeQuery, initialBriefs, isDefaultFeed, timeWindow]);
+  }, [activeQuery, initialBriefs, isDefaultFeed]);
 
   useEffect(() => {
     refreshFeed();
@@ -121,7 +120,6 @@ export function DashboardFeed({
     setHasMore(false);
     setVisibleCount(12);
     setHasLoadedApi(initialBriefs.length > 0);
-    setTimeWindow("week");
     setApiError(null);
   }, [activeQuery, initialBriefs]);
 
@@ -136,7 +134,7 @@ export function DashboardFeed({
     const nextPage = page + 1;
     const params = new URLSearchParams();
     if (!isDefaultFeed) params.set("q", activeQuery);
-    params.set("timeRange", isDefaultFeed ? "week" : timeWindow);
+    params.set("timeRange", "week");
     params.set("limit", "20");
     params.set("page", String(nextPage));
     params.set("edition", dailyEditionKey());
@@ -160,7 +158,7 @@ export function DashboardFeed({
     } finally {
       setIsLoadingMore(false);
     }
-  }, [activeQuery, briefs.length, hasMore, isDefaultFeed, page, timeWindow, visibleCount]);
+  }, [activeQuery, briefs.length, hasMore, isDefaultFeed, page, visibleCount]);
 
   useEffect(() => {
     if (!isDefaultFeed) return;
@@ -193,8 +191,6 @@ export function DashboardFeed({
     if (!Number.isFinite(published)) return true;
     const ageMs = now - published;
     if (ageMs < 0) return true;
-    if (timeWindow === "breaking") return ageMs <= 6 * 60 * 60 * 1000;
-    if (timeWindow === "today") return ageMs <= 24 * 60 * 60 * 1000;
     return ageMs <= 7 * 24 * 60 * 60 * 1000;
   });
   const displayed = scoped.slice(0, visibleCount);
@@ -239,24 +235,9 @@ export function DashboardFeed({
       )}
 
       <div className="flex flex-wrap gap-2">
-        {[
-          { id: "breaking", label: "Breaking" },
-          { id: "today", label: "Today" },
-          { id: "week", label: "This week" },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setTimeWindow(tab.id as "breaking" | "today" | "week")}
-            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-              timeWindow === tab.id
-                ? "bg-fin-brand text-white"
-                : "border border-fin-border bg-fin-surface text-fin-navy hover:bg-fin-muted"
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+        <span className="rounded-full bg-fin-brand px-3 py-1.5 text-xs font-semibold text-white">
+          This week&apos;s edition
+        </span>
       </div>
 
       {!hasLoadedApi ? (
@@ -265,9 +246,7 @@ export function DashboardFeed({
         </p>
       ) : displayed.length === 0 ? (
         <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
-          {timeWindow === "today"
-            ? "No fresh stories found today. Try This week or check back later."
-            : "No fresh stories found. The daily edition updates once per day — check back later."}
+          No fresh stories found. The daily edition updates once per day — check back later.
         </p>
       ) : (
         <div className="space-y-10">
