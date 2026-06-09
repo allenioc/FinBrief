@@ -4,7 +4,7 @@ import { ArticleDetail } from "@/components/ArticleDetail";
 import { BriefFeedBar } from "@/components/BriefFeedBar";
 import { Disclaimer } from "@/components/Disclaimer";
 import { UpdateScheduleFooter } from "@/components/UpdateScheduleFooter";
-import { getBriefById } from "@/lib/briefs";
+import { findArticleById } from "@/lib/article-lookup";
 import { toTopicSlug } from "@/lib/slug";
 
 interface BriefPageProps {
@@ -13,7 +13,7 @@ interface BriefPageProps {
 
 export default async function BriefPage({ params }: BriefPageProps) {
   const { id } = await params;
-  const article = await getBriefById(id);
+  const article = await findArticleById(id);
 
   if (!article) {
     notFound();

@@ -57,24 +57,6 @@ function cacheBriefs(briefs: Brief[]) {
   briefs.forEach((brief) => liveBriefCache.set(brief.id, brief));
 }
 
-function localBriefById(id: string): Brief | undefined {
-  return liveBriefCache.get(id) ?? MOCK_BRIEFS.find((b) => b.id === id);
-}
-
-export async function getBriefById(id: string): Promise<Brief | undefined> {
-  const existing = localBriefById(id);
-  if (existing) return existing;
-
-  const queries = ["", "aapl", "tsla", "spy", "qqq", "inflation", "interest rates"];
-  for (const query of queries) {
-    const briefs = await getBriefs(query);
-    const match = briefs.find((brief) => brief.id === id);
-    if (match) return match;
-  }
-
-  return undefined;
-}
-
 export async function getBriefsForTopic(slug: string): Promise<Brief[]> {
   const symbol = fromTopicSlug(slug);
   const q = symbol.toLowerCase();
@@ -98,7 +80,9 @@ export async function getBriefsForTopic(slug: string): Promise<Brief[]> {
 export async function fetchBriefsFromApi(query: string): Promise<BriefResponse | null> {
   try {
     const params = new URLSearchParams({ q: query || "" });
-    params.set("limit", "24");
+    // Must match the dashboard client request exactly so both read/write the
+    // same saved edition cache entry (the edition key includes the limit).
+    params.set("limit", "20");
     params.set("page", "1");
     params.set("edition", dailyEditionKey());
     const localhostBase = `http://localhost:${process.env.PORT ?? "3000"}`;

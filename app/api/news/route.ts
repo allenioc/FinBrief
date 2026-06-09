@@ -415,6 +415,9 @@ export async function GET(request: NextRequest) {
         fetchedAt: payload.fetchedAt,
         payload,
       } satisfies LastGoodRecord),
+      // Index each article by id so /brief/[id] can resolve clicked stories
+      // without re-fetching providers.
+      ...payload.briefs.map((brief) => cacheSet(`article::${brief.id}`, brief)),
     ]);
     cacheStatus = "live_fetch_saved_as_todays_edition";
     lastSuccessfulFetchedAt = payload.fetchedAt;
