@@ -1,35 +1,48 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Brief, MarketBriefData } from "@/lib/types";
 import {
   getInitialMarketBriefMeta,
 } from "@/lib/mock-refresh";
 import { buildMarketBriefFromBriefs } from "@/lib/market-brief-live";
-import { BROAD_NEWS_QUERY } from "@/lib/news-constants";
 import { formatProviderLabel, isLiveProvider } from "@/lib/news-source";
 import { formatLastUpdated, formatTodayAt } from "@/lib/date-format";
 import { MarketBriefPanel } from "./MarketBriefPanel";
-import { RefreshFeedButton } from "./RefreshFeedButton";
-import { LastUpdatedLabel } from "./LastUpdatedLabel";
+
+function msUntilNextLocalMidnight(): number {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(24, 0, 0, 0);
+  return Math.max(1000, next.getTime() - now.getTime());
+}
+
+function dailyEditionKey(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `business-news-feed-${yyyy}-${mm}-${dd}`;
+}
 
 export function MarketBriefClient({ initialData }: { initialData: MarketBriefData }) {
   const [data, setData] = useState(initialData);
   const [meta, setMeta] = useState(getInitialMarketBriefMeta);
-  const [loading, setLoading] = useState(false);
   const [provider, setProvider] = useState<string>("mock");
   const [articleCount, setArticleCount] = useState<number>(0);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const isFetchingRef = useRef(false);
 
-  const fetchLiveBrief = useCallback(async (manual = false) => {
-    setLoading(true);
-    if (manual) setStatusMessage("Checking for newer stories…");
+  // Reads the same saved daily edition as the Dashboard. The API only calls
+  // live providers when its cache rules allow it (new day or no saved edition).
+  const loadDailyEdition = useCallback(async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     const params = new URLSearchParams({
-      q: BROAD_NEWS_QUERY,
+      timeRange: "week",
       limit: "20",
       page: "1",
     });
-    if (manual) params.set("fresh", Date.now().toString());
+    params.set("edition", dailyEditionKey());
     try {
       const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
       if (!response.ok) return;
@@ -38,8 +51,6 @@ export function MarketBriefClient({ initialData }: { initialData: MarketBriefDat
         provider?: string;
         fetchedAt?: string;
       };
-      const prevTop = data.topStories.map((story) => story.id).join("|");
-      const nextTop = payload.briefs.slice(0, 5).map((story) => story.id).join("|");
       if (payload.briefs?.length > 0) {
         setData(buildMarketBriefFromBriefs(payload.briefs));
       }
@@ -49,20 +60,29 @@ export function MarketBriefClient({ initialData }: { initialData: MarketBriefDat
         refreshCount: prev.refreshCount + 1,
         lastUpdatedAt: payload.fetchedAt ?? new Date().toISOString(),
       }));
-      if (manual) setStatusMessage(prevTop === nextTop ? "You're up to date." : "Stories updated.");
+    } catch {
+      // Keep showing the current data; the saved edition is already rendered.
     } finally {
-      setLoading(false);
-      if (manual) window.setTimeout(() => setStatusMessage(null), 1800);
+      isFetchingRef.current = false;
     }
-  }, [data.topStories]);
+  }, []);
 
   useEffect(() => {
-    fetchLiveBrief();
-  }, [fetchLiveBrief]);
+    loadDailyEdition();
 
-  const handleRefresh = useCallback(async () => {
-    await fetchLiveBrief(true);
-  }, [fetchLiveBrief]);
+    let midnightTimer: number | undefined;
+    const scheduleMidnightRefresh = () => {
+      midnightTimer = window.setTimeout(async () => {
+        await loadDailyEdition();
+        scheduleMidnightRefresh();
+      }, msUntilNextLocalMidnight());
+    };
+    scheduleMidnightRefresh();
+
+    return () => {
+      if (midnightTimer) window.clearTimeout(midnightTimer);
+    };
+  }, [loadDailyEdition]);
 
   return (
     <div className="space-y-6">
@@ -72,14 +92,8 @@ export function MarketBriefClient({ initialData }: { initialData: MarketBriefDat
           <p className="mt-1 text-sm text-fin-subtle" suppressHydrationWarning>
             {formatTodayAt(new Date(meta.lastUpdatedAt))}
           </p>
-          <LastUpdatedLabel iso={meta.lastUpdatedAt} prefix="Feed refreshed" className="text-sm text-fin-subtle" />
         </div>
-        <RefreshFeedButton
-          onClick={handleRefresh}
-          loading={loading}
-          loadingMessage="Checking for newer stories…"
-          label="Refresh stories"
-        />
+        <p className="text-xs text-fin-subtle">Daily market brief updates once per day.</p>
       </div>
 
       <div
@@ -94,21 +108,6 @@ export function MarketBriefClient({ initialData }: { initialData: MarketBriefDat
       <p className="text-xs text-fin-subtle">
         {formatLastUpdated(meta.lastUpdatedAt)} · {articleCount} stories
       </p>
-      <p className="text-xs text-fin-subtle">
-        Last updated: {formatLastUpdated(meta.lastUpdatedAt)}
-      </p>
-
-      {statusMessage && (
-        <p className="text-sm font-medium text-fin-brand" role="status">
-          {statusMessage}
-        </p>
-      )}
-
-      {loading && !statusMessage && (
-        <p className="text-sm font-medium text-fin-brand" role="status">
-          Refreshing market brief from /api/news…
-        </p>
-      )}
 
       <MarketBriefPanel data={data} updatedLabel={formatLastUpdated(meta.lastUpdatedAt)} />
     </div>

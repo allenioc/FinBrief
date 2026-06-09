@@ -15,7 +15,7 @@ export default async function MarketBriefPage() {
       <PageHeader
         eyebrow="Daily Market Brief"
         title="Your morning market snapshot"
-        description="Top stories, overall mood, macro events, and index performance sourced from /api/news with mock fallback when live providers are unavailable."
+        description="Top stories, overall mood, macro events, and index performance from today's edition. Daily market brief updates once per day."
       />
 
       <MarketBriefClient initialData={initialData} />
