@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
 import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
+import { parseThirtySecondBullets } from "@/lib/article-analysis";
 import { formatDateTime } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
@@ -48,6 +49,7 @@ function Section({
 export function ArticleDetail({ article }: { article: Brief }) {
   const fallbackLabel = article.ticker !== "—" ? article.ticker : article.topic;
   const watchlistItem = watchlistItemFromBrief(article);
+  const quickBullets = parseThirtySecondBullets(article.thirtySecondVersion);
 
   return (
     <div className="space-y-8">
@@ -147,13 +149,14 @@ export function ArticleDetail({ article }: { article: Brief }) {
             <p>{article.summary}</p>
             <div className="mt-5 rounded-2xl bg-fin-brand-soft/50 p-5 not-italic">
               <p className="fin-label text-fin-brand">The 30-second version</p>
-              <p className="mt-2 text-base font-medium text-fin-navy">
-                {article.thirtySecondVersion}
-              </p>
+              <ul className="mt-3 list-disc space-y-2 pl-5 text-base font-medium text-fin-navy">
+                {quickBullets.map((bullet) => (
+                  <li key={bullet}>{bullet}</li>
+                ))}
+              </ul>
             </div>
           </Section>
 
-          <Section title="What happened?">{article.whatHappened}</Section>
           <Section title="Why it matters">{article.whyItMatters}</Section>
           <Section title="Who is affected?">{article.whoIsAffected}</Section>
 

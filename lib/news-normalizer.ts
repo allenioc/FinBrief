@@ -1,12 +1,17 @@
 import { ARTICLE_IMAGES } from "./article-images";
 import {
-  buildEducationalSummary,
-  buildLongSummary,
+  buildBullCase,
+  buildBearCase,
+  buildFinBriefSummary,
+  buildNeutralView,
   buildThirtySecondVersion,
+  buildWhyItMatters,
+  buildWhoIsAffected,
   estimateMarketImpact,
   estimateSentiment,
   extractKeyTerms,
   inferArticleType,
+  inferDisplayTopic,
 } from "./article-analysis";
 import { toTopicSlug } from "./slug";
 import type { ProviderArticle } from "./news-providers";
@@ -41,11 +46,8 @@ export interface NormalizedNewsArticle {
   recommendedNext: string[];
 }
 
-function inferTopic(query: string, headline: string): string {
-  const normalized = query.trim();
-  if (normalized) return normalized.toUpperCase() === normalized ? normalized : normalized;
-  const words = headline.split(" ").filter(Boolean);
-  return words.slice(0, 2).join(" ");
+function inferTopic(query: string, headline: string, articleType: NormalizedNewsArticle["articleType"]): string {
+  return inferDisplayTopic(query, headline, articleType);
 }
 
 function fallbackImageForType(type: NormalizedNewsArticle["articleType"]): string {
@@ -113,10 +115,11 @@ export function normalizeProviderArticles(input: {
   return input.providerArticles.map((article) => {
     const analysisText = `${article.headline} ${article.excerpt} ${article.content ?? ""}`;
     const type = inferArticleType(analysisText);
-    const topic = inferTopic(input.query, article.headline);
+    const topic = inferTopic(input.query, article.headline, type);
     const { sentiment, confidence } = estimateSentiment(analysisText);
     const marketImpact = estimateMarketImpact(analysisText);
     const keyTerms = extractKeyTerms(analysisText);
+    const excerpt = article.excerpt?.trim() || "No summary available from provider.";
 
     return {
       id: article.id,
@@ -126,21 +129,21 @@ export function normalizeProviderArticles(input: {
       publishedAt: article.publishedAt,
       imageUrl: article.imageUrl,
       originalUrl: article.originalUrl,
-      excerpt: article.excerpt,
+      excerpt,
       relatedTickerOrTopic: topic,
       articleType: type,
       sentiment,
       marketImpact,
       confidence,
-      thirtySecondVersion: buildThirtySecondVersion(article.headline, article.excerpt),
-      finbriefSummary: buildLongSummary(article.headline, article.excerpt, input.query),
-      whatHappened: article.excerpt,
-      whyItMatters: `This story may influence expectations around ${topic}, especially for related equities, ETFs, and macro-sensitive assets.`,
-      whoIsAffected: [`Investors tracking ${topic}`, "Related sector ETFs", "Macro-sensitive portfolios"],
+      thirtySecondVersion: buildThirtySecondVersion(article.headline, excerpt),
+      finbriefSummary: buildFinBriefSummary(article.headline, excerpt),
+      whatHappened: excerpt,
+      whyItMatters: buildWhyItMatters(article.headline, excerpt, type),
+      whoIsAffected: [buildWhoIsAffected(type)],
       keyTerms,
-      bullCase: `If follow-up data supports this headline, sentiment around ${topic} could improve.`,
-      bearCase: `If later updates weaken the narrative, risk appetite around ${topic} may fade.`,
-      neutralView: "The signal is useful, but confirmation from additional reporting and data is still needed.",
+      bullCase: buildBullCase(article.headline, excerpt, sentiment),
+      bearCase: buildBearCase(article.headline, excerpt, sentiment),
+      neutralView: buildNeutralView(),
       risks: [
         "Headline-driven moves can reverse quickly",
         "Provider descriptions may omit key context",
@@ -215,5 +218,5 @@ export function providerArticlesToBriefs(params: {
 }
 
 export function buildCardPreview(article: NormalizedNewsArticle): string {
-  return buildEducationalSummary(article.headline, article.excerpt, article.relatedTickerOrTopic);
+  return buildFinBriefSummary(article.headline, article.excerpt);
 }
