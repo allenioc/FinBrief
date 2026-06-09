@@ -171,9 +171,18 @@ export async function GET(request: NextRequest) {
       page,
       timeRange,
     });
+    const providerRun = await fetchProviderNews(query, limit, page, timeRange);
     return NextResponse.json({
       ...newsApiDiagnostics,
       providers: getProviderDebugStatuses(),
+      configured: {
+        newsapi: Boolean(process.env.NEWS_API_KEY),
+        gnews: Boolean(process.env.GNEWS_API_KEY),
+        thenewsapi: Boolean(process.env.THENEWSAPI_KEY),
+      },
+      providerStatuses: providerRun?.providerRunStatuses ?? [],
+      providerCounts: providerRun?.providerStats ?? [],
+      providerErrorMessage: providerRun?.errorMessage,
       timeRange,
     });
   }
