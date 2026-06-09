@@ -3,6 +3,7 @@ import { MOCK_BRIEFS } from "@/lib/articles-data";
 import {
   debugNewsApiQuery,
   fetchProviderNews,
+  getProviderDebugStatuses,
   type ProviderTimeRange,
 } from "@/lib/news-providers";
 import { providerArticlesToBriefs } from "@/lib/news-normalizer";
@@ -164,13 +165,17 @@ export async function GET(request: NextRequest) {
   const fresh = request.nextUrl.searchParams.get("fresh");
   const timeRange = normalizeTimeRange(request.nextUrl.searchParams.get("timeRange"));
   if (debug) {
-    const diagnostics = await debugNewsApiQuery({
+    const newsApiDiagnostics = await debugNewsApiQuery({
       query: query || "business",
       limit,
       page,
       timeRange,
     });
-    return NextResponse.json(diagnostics);
+    return NextResponse.json({
+      ...newsApiDiagnostics,
+      providers: getProviderDebugStatuses(),
+      timeRange,
+    });
   }
   const bust = fresh === "true" || fresh === "1" || Boolean(request.nextUrl.searchParams.get("bust"));
   const edition = request.nextUrl.searchParams.get("edition")?.trim() || `business-news-feed-${localDateKey()}`;

@@ -24,6 +24,30 @@ export interface NewsProviderResponse {
 
 export type ProviderTimeRange = "breaking" | "today" | "week";
 
+type ProviderName =
+  | "newsapi"
+  | "gnews"
+  | "thenewsapi"
+  | "finnhub"
+  | "polygon"
+  | "alphavantage";
+
+type ProviderTaskResult = {
+  provider: ProviderName;
+  query: string;
+  articles: ProviderArticle[];
+  error: string | null;
+  skipped?: string;
+};
+
+export interface ProviderDebugStatus {
+  provider: ProviderName;
+  configured: boolean;
+  coolingDown: boolean;
+  cooldownRemainingMs: number;
+  lastError?: string;
+}
+
 export interface NewsApiDebugResponse {
   provider: "newsapi";
   hasNewsApiKey: boolean;
@@ -46,6 +70,9 @@ export interface NewsApiDebugResponse {
 }
 
 const WIDE_BROAD_FALLBACK_QUERY = "business OR finance OR economy";
+const PROVIDER_COOLDOWN_MS = 5 * 60 * 1000;
+const RATE_LIMIT_COOLDOWN_MS = 15 * 60 * 1000;
+const providerCooldownByName = new Map<ProviderName, { until: number; reason: string }>();
 
 const QUERY_EXPANSIONS: Record<string, string> = {
   apple: "Apple OR AAPL OR iPhone OR Apple earnings",
@@ -166,6 +193,28 @@ function inTimeRange(publishedAt: string | undefined, timeRange: ProviderTimeRan
   return ageMs <= 7 * 24 * 60 * 60 * 1000;
 }
 
+function isRateLimitError(message: string): boolean {
+  return /ratelimited|too many requests|429|quota|limit exceeded/i.test(message);
+}
+
+function getProviderCooldown(provider: ProviderName): { until: number; reason: string } | null {
+  const cooldown = providerCooldownByName.get(provider);
+  if (!cooldown) return null;
+  if (cooldown.until <= Date.now()) {
+    providerCooldownByName.delete(provider);
+    return null;
+  }
+  return cooldown;
+}
+
+function setProviderCooldown(provider: ProviderName, error: string): void {
+  const ms = isRateLimitError(error) ? RATE_LIMIT_COOLDOWN_MS : PROVIDER_COOLDOWN_MS;
+  providerCooldownByName.set(provider, {
+    until: Date.now() + ms,
+    reason: error,
+  });
+}
+
 async function fetchFromNewsApi(
   query: string,
   limit: number,
@@ -218,6 +267,104 @@ async function fetchFromNewsApi(
       originalUrl: article.url ?? "",
       excerpt: article.description ?? article.content ?? "No summary available from provider.",
       content: article.content ?? undefined,
+    })) ?? [];
+  return limitArticles(articles, limit);
+}
+
+async function fetchFromGNews(
+  query: string,
+  limit: number,
+  page: number,
+  apiKey: string,
+  timeRange: ProviderTimeRange
+): Promise<ProviderArticle[]> {
+  const expandedQuery = expandNewsQuery(query);
+  const { fromDate, toDate } = resolveTimeWindow(timeRange);
+  const endpoint = `https://gnews.io/api/v4/search?q=${encodeURIComponent(
+    expandedQuery
+  )}&lang=en&sortby=publishedAt&from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(
+    toDate
+  )}&max=${Math.min(50, Math.max(1, limit))}&page=${Math.max(1, page)}&apikey=${encodeURIComponent(apiKey)}`;
+  const response = await fetch(endpoint, {
+    next: { revalidate: 900 },
+  });
+  const payload = (await response.json()) as {
+    errors?: string[];
+    articles?: Array<{
+      title?: string;
+      description?: string;
+      content?: string;
+      url?: string;
+      image?: string;
+      publishedAt?: string;
+      source?: { name?: string };
+    }>;
+  };
+  if (!response.ok || (payload.errors && payload.errors.length > 0)) {
+    const msg = payload.errors?.[0] || `GNews request failed (${response.status})`;
+    throw new Error(`gnews_error: ${msg}`);
+  }
+  const articles =
+    payload.articles?.map((article, index) => ({
+      id: `gnews-${asId(article.url ?? article.title ?? `${index}`)}`,
+      headline: article.title ?? "Untitled article",
+      source: article.source?.name ?? "GNews",
+      publishedAt: coerceDate(article.publishedAt),
+      imageUrl: article.image ?? undefined,
+      originalUrl: article.url ?? "",
+      excerpt: article.description ?? article.content ?? "No summary available from provider.",
+      content: article.content ?? undefined,
+    })) ?? [];
+  return limitArticles(articles, limit);
+}
+
+async function fetchFromTheNewsApi(
+  query: string,
+  limit: number,
+  page: number,
+  apiKey: string,
+  timeRange: ProviderTimeRange
+): Promise<ProviderArticle[]> {
+  const expandedQuery = expandNewsQuery(query);
+  const { fromDate, toDate } = resolveTimeWindow(timeRange);
+  const endpoint = `https://api.thenewsapi.com/v1/news/all?api_token=${encodeURIComponent(
+    apiKey
+  )}&search=${encodeURIComponent(expandedQuery)}&language=en&sort=published_at&published_after=${encodeURIComponent(
+    fromDate
+  )}&published_before=${encodeURIComponent(toDate)}&limit=${Math.min(
+    50,
+    Math.max(1, limit)
+  )}&page=${Math.max(1, page)}`;
+  const response = await fetch(endpoint, {
+    next: { revalidate: 900 },
+  });
+  const payload = (await response.json()) as {
+    message?: string;
+    error?: string;
+    data?: Array<{
+      title?: string;
+      description?: string;
+      snippet?: string;
+      source?: string;
+      url?: string;
+      image_url?: string;
+      published_at?: string;
+    }>;
+  };
+  if (!response.ok || payload.error || payload.message) {
+    const msg = payload.error || payload.message || `TheNewsAPI request failed (${response.status})`;
+    throw new Error(`thenewsapi_error: ${msg}`);
+  }
+  const articles =
+    payload.data?.map((article, index) => ({
+      id: `thenewsapi-${asId(article.url ?? article.title ?? `${index}`)}`,
+      headline: article.title ?? "Untitled article",
+      source: article.source ?? "TheNewsAPI",
+      publishedAt: coerceDate(article.published_at),
+      imageUrl: article.image_url ?? undefined,
+      originalUrl: article.url ?? "",
+      excerpt: article.description ?? article.snippet ?? "No summary available from provider.",
+      content: article.snippet ?? undefined,
     })) ?? [];
   return limitArticles(articles, limit);
 }
@@ -467,12 +614,36 @@ async function fetchFromAlphaVantage(
 }
 
 function configuredProviders() {
-  const providers: Array<"newsapi" | "finnhub" | "polygon" | "alphavantage"> = [];
+  const providers: ProviderName[] = [];
   if (process.env.NEWS_API_KEY) providers.push("newsapi");
+  if (process.env.GNEWS_API_KEY) providers.push("gnews");
+  if (process.env.THENEWSAPI_KEY) providers.push("thenewsapi");
   if (process.env.FINNHUB_API_KEY) providers.push("finnhub");
   if (process.env.POLYGON_API_KEY) providers.push("polygon");
   if (process.env.ALPHA_VANTAGE_API_KEY) providers.push("alphavantage");
   return providers;
+}
+
+export function getProviderDebugStatuses(): ProviderDebugStatus[] {
+  const allProviders: ProviderName[] = [
+    "newsapi",
+    "gnews",
+    "thenewsapi",
+    "finnhub",
+    "polygon",
+    "alphavantage",
+  ];
+  const configured = new Set(configuredProviders());
+  return allProviders.map((provider) => {
+    const cooldown = getProviderCooldown(provider);
+    return {
+      provider,
+      configured: configured.has(provider),
+      coolingDown: Boolean(cooldown),
+      cooldownRemainingMs: cooldown ? Math.max(0, cooldown.until - Date.now()) : 0,
+      lastError: cooldown?.reason,
+    };
+  });
 }
 
 function resolveQueryBatch(query: string, page: number): string[] {
@@ -590,11 +761,21 @@ export async function fetchProviderNews(
   const providers = configuredProviders();
   if (providers.length === 0) return null;
   const queryBatch = resolveQueryBatch(query, page);
-  const perQueryLimit = Math.max(8, Math.ceil((limit * 2) / queryBatch.length));
+  const perQueryLimit = Math.max(4, Math.ceil((limit * 1.5) / Math.max(1, queryBatch.length)));
   const runBatch = async (batch: string[]) =>
     Promise.all(
       providers.flatMap((provider) =>
         batch.map(async (singleQuery) => {
+          const cooldown = getProviderCooldown(provider);
+          if (cooldown) {
+            return {
+              provider,
+              query: singleQuery,
+              articles: [] as ProviderArticle[],
+              error: null as string | null,
+              skipped: "cooldown",
+            } satisfies ProviderTaskResult;
+          }
           try {
             if (provider === "newsapi" && process.env.NEWS_API_KEY) {
               const articles = await fetchFromNewsApi(
@@ -604,28 +785,85 @@ export async function fetchProviderNews(
                 process.env.NEWS_API_KEY,
                 timeRange
               );
-              return { provider, query: singleQuery, articles, error: null as string | null };
+              return {
+                provider,
+                query: singleQuery,
+                articles,
+                error: null as string | null,
+              } satisfies ProviderTaskResult;
+            }
+            if (provider === "gnews" && process.env.GNEWS_API_KEY) {
+              const articles = await fetchFromGNews(
+                singleQuery,
+                perQueryLimit,
+                1,
+                process.env.GNEWS_API_KEY,
+                timeRange
+              );
+              return {
+                provider,
+                query: singleQuery,
+                articles,
+                error: null as string | null,
+              } satisfies ProviderTaskResult;
+            }
+            if (provider === "thenewsapi" && process.env.THENEWSAPI_KEY) {
+              const articles = await fetchFromTheNewsApi(
+                singleQuery,
+                perQueryLimit,
+                1,
+                process.env.THENEWSAPI_KEY,
+                timeRange
+              );
+              return {
+                provider,
+                query: singleQuery,
+                articles,
+                error: null as string | null,
+              } satisfies ProviderTaskResult;
             }
             if (provider === "finnhub" && process.env.FINNHUB_API_KEY) {
               const articles = await fetchFromFinnhub(singleQuery, perQueryLimit, 1, process.env.FINNHUB_API_KEY);
-              return { provider, query: singleQuery, articles, error: null as string | null };
+              return {
+                provider,
+                query: singleQuery,
+                articles,
+                error: null as string | null,
+              } satisfies ProviderTaskResult;
             }
             if (provider === "polygon" && process.env.POLYGON_API_KEY) {
               const articles = await fetchFromPolygon(singleQuery, perQueryLimit, 1, process.env.POLYGON_API_KEY);
-              return { provider, query: singleQuery, articles, error: null as string | null };
+              return {
+                provider,
+                query: singleQuery,
+                articles,
+                error: null as string | null,
+              } satisfies ProviderTaskResult;
             }
             if (provider === "alphavantage" && process.env.ALPHA_VANTAGE_API_KEY) {
               const articles = await fetchFromAlphaVantage(singleQuery, perQueryLimit, 1, process.env.ALPHA_VANTAGE_API_KEY);
-              return { provider, query: singleQuery, articles, error: null as string | null };
+              return {
+                provider,
+                query: singleQuery,
+                articles,
+                error: null as string | null,
+              } satisfies ProviderTaskResult;
             }
-            return { provider, query: singleQuery, articles: [] as ProviderArticle[], error: null as string | null };
-          } catch (error) {
             return {
               provider,
               query: singleQuery,
               articles: [] as ProviderArticle[],
-              error: error instanceof Error ? error.message : "Provider request failed",
-            };
+              error: null as string | null,
+            } satisfies ProviderTaskResult;
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : "Provider request failed";
+            setProviderCooldown(provider, reason);
+            return {
+              provider,
+              query: singleQuery,
+              articles: [] as ProviderArticle[],
+              error: reason,
+            } satisfies ProviderTaskResult;
           }
         })
       )
@@ -648,15 +886,23 @@ export async function fetchProviderNews(
     }
   }
 
-  const providerStats = resolved.map((entry) => ({
-    provider: entry.provider,
-    count: entry.articles.length,
-  }));
+  const providerStats = Array.from(
+    resolved.reduce((acc, entry) => {
+      const current = acc.get(entry.provider) ?? 0;
+      acc.set(entry.provider, current + entry.articles.length);
+      return acc;
+    }, new Map<string, number>())
+  ).map(([provider, count]) => ({ provider, count }));
   const errors = resolved
     .map((entry) => entry.error)
     .filter((entry): entry is string => Boolean(entry));
-  if (merged.length === 0 && errors.length > 0) {
-    const hasRateLimit = errors.some((error) => /ratelimited|too many requests|429/i.test(error));
+  const skippedCooldownReasons = resolved
+    .filter((entry) => entry.skipped === "cooldown")
+    .map((entry) => getProviderCooldown(entry.provider)?.reason ?? "");
+  if (merged.length === 0 && (errors.length > 0 || skippedCooldownReasons.length > 0)) {
+    const hasRateLimit =
+      errors.some((error) => /ratelimited|too many requests|429/i.test(error)) ||
+      skippedCooldownReasons.some((error) => /ratelimited|too many requests|429/i.test(error));
     return {
       provider: "error",
       query,
@@ -673,7 +919,7 @@ export async function fetchProviderNews(
   const paginated = merged.slice(start, start + limit);
 
   return {
-    provider: providers.join(","),
+    provider: providers.join(",") || "none",
     query,
     fetchedAt: new Date().toISOString(),
     articles: paginated,
