@@ -20,6 +20,13 @@ type CachedPayload = {
   briefs: ReturnType<typeof providerArticlesToBriefs>["briefs"];
 };
 
+type TimeRange = "breaking" | "today" | "week";
+
+function normalizeTimeRange(input: string | null): TimeRange {
+  if (input === "breaking" || input === "today" || input === "week") return input;
+  return "week";
+}
+
 function localDateKey(): string {
   const now = new Date();
   const yyyy = now.getFullYear();
@@ -32,6 +39,16 @@ function publishedTime(iso?: string): number {
   if (!iso) return 0;
   const value = new Date(iso).getTime();
   return Number.isFinite(value) ? value : 0;
+}
+
+function inTimeRange(iso: string | undefined, range: TimeRange): boolean {
+  if (range === "breaking") return true;
+  const value = publishedTime(iso);
+  if (!value) return false;
+  const ageMs = Date.now() - value;
+  if (ageMs < 0) return true;
+  if (range === "today") return ageMs <= 24 * 60 * 60 * 1000;
+  return ageMs <= 7 * 24 * 60 * 60 * 1000;
 }
 
 const cache = new Map<string, { expiresAt: number; payload: CachedPayload }>();
@@ -141,10 +158,11 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(50, Math.max(8, Number(request.nextUrl.searchParams.get("limit") ?? "20")));
   const page = Math.max(1, Number(request.nextUrl.searchParams.get("page") ?? "1"));
   const fresh = request.nextUrl.searchParams.get("fresh");
+  const timeRange = normalizeTimeRange(request.nextUrl.searchParams.get("timeRange"));
   const bust = fresh === "true" || fresh === "1" || Boolean(request.nextUrl.searchParams.get("bust"));
   const edition = request.nextUrl.searchParams.get("edition")?.trim() || `business-news-feed-${localDateKey()}`;
   const queryKey = query || "broad-business-finance";
-  const key = `${queryKey.toLowerCase()}::${edition.toLowerCase()}::${limit}::${page}`;
+  const key = `${queryKey.toLowerCase()}::${edition.toLowerCase()}::${timeRange}::${limit}::${page}`;
 
   const cached = bust ? null : cache.get(key);
   if (!bust && cached && cached.expiresAt > Date.now()) {
@@ -164,19 +182,24 @@ export async function GET(request: NextRequest) {
         const sortedArticles = [...mapped.normalized].sort(
           (a, b) => publishedTime(b.publishedAt) - publishedTime(a.publishedAt)
         );
+        const rangeBriefs = sortedBriefs.filter((item) => inTimeRange(item.publishedAt, timeRange));
+        const rangeArticles = sortedArticles.filter((item) => inTimeRange(item.publishedAt, timeRange));
+        const start = (Math.max(1, page) - 1) * limit;
+        const pagedBriefs = rangeBriefs.slice(start, start + limit);
+        const pagedArticles = rangeArticles.slice(start, start + limit);
         return {
           query,
           provider: providerResponse.provider,
           providerStats: providerResponse.providerStats,
           fetchedAt: providerResponse.fetchedAt,
-          articleCount: sortedBriefs.length,
+          articleCount: pagedBriefs.length,
           page,
           limit,
-          hasMore: page * limit < providerResponse.totalAvailable,
-          totalAvailable: providerResponse.totalAvailable,
-          articles: sortedArticles,
-          normalized: sortedArticles,
-          briefs: sortedBriefs,
+          hasMore: start + limit < rangeBriefs.length,
+          totalAvailable: rangeBriefs.length,
+          articles: pagedArticles,
+          normalized: pagedArticles,
+          briefs: pagedBriefs,
         } satisfies CachedPayload;
       })()
     : toMockPayload(query, page, limit);

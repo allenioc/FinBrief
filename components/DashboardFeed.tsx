@@ -35,7 +35,7 @@ export function DashboardFeed({
   const [visibleCount, setVisibleCount] = useState(12);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
-  const [timeWindow, setTimeWindow] = useState<"breaking" | "today" | "week">("today");
+  const [timeWindow, setTimeWindow] = useState<"breaking" | "today" | "week">("week");
   const [hasLoadedApi, setHasLoadedApi] = useState(initialBriefs.length > 0);
   const [lastUpdateMode, setLastUpdateMode] = useState<"daily" | "manual">("daily");
   const { items: watchlistItems } = useWatchlist();
@@ -72,6 +72,7 @@ export function DashboardFeed({
 
     const params = new URLSearchParams();
     if (!isDefaultFeed) params.set("q", activeQuery);
+    params.set("timeRange", timeWindow);
     params.set("limit", "20");
     params.set("page", "1");
     if (reason === "manual") {
@@ -120,7 +121,7 @@ export function DashboardFeed({
       }
       isRefreshingRef.current = false;
     }
-  }, [activeQuery, initialBriefs, isDefaultFeed]);
+  }, [activeQuery, initialBriefs, isDefaultFeed, timeWindow]);
 
   const handleRefresh = useCallback(async () => {
     await refreshFeed("manual");
@@ -138,6 +139,7 @@ export function DashboardFeed({
     setVisibleCount(12);
     setHasLoadedApi(initialBriefs.length > 0);
     setLastUpdateMode("daily");
+    setTimeWindow("week");
   }, [activeQuery, initialBriefs]);
 
   const handleLoadMore = useCallback(async () => {
@@ -151,6 +153,7 @@ export function DashboardFeed({
     const nextPage = page + 1;
     const params = new URLSearchParams();
     if (!isDefaultFeed) params.set("q", activeQuery);
+    params.set("timeRange", timeWindow);
     params.set("limit", "20");
     params.set("page", String(nextPage));
     params.set("edition", dailyEditionKey());
@@ -172,7 +175,7 @@ export function DashboardFeed({
     } finally {
       setIsLoadingMore(false);
     }
-  }, [activeQuery, briefs.length, hasMore, isDefaultFeed, page, visibleCount]);
+  }, [activeQuery, briefs.length, hasMore, isDefaultFeed, page, timeWindow, visibleCount]);
 
   useEffect(() => {
     if (!isDefaultFeed) return;
@@ -199,15 +202,7 @@ export function DashboardFeed({
     const safeB = Number.isFinite(bt) ? bt : 0;
     return safeB - safeA;
   });
-  const now = Date.now();
-  const timeFiltered = sortedBriefs.filter((brief) => {
-    const ageMs = now - new Date(brief.publishedAt).getTime();
-    if (timeWindow === "breaking") return ageMs <= 6 * 60 * 60 * 1000;
-    if (timeWindow === "today") return ageMs <= 24 * 60 * 60 * 1000;
-    return ageMs <= 7 * 24 * 60 * 60 * 1000;
-  });
-  const scoped = timeFiltered.length > 0 ? timeFiltered : briefs;
-  const displayed = scoped.slice(0, visibleCount);
+  const displayed = sortedBriefs.slice(0, visibleCount);
   const topStories = displayed.slice(0, 4);
   const marketStories = displayed.filter(
     (brief) => brief.articleType === "market news" || brief.articleType === "macro news"
@@ -284,7 +279,9 @@ export function DashboardFeed({
         </p>
       ) : displayed.length === 0 ? (
         <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
-          No fresh stories found. Try Refresh stories or check back later.
+          {timeWindow === "today"
+            ? "No fresh stories found today. Try This week or check back later."
+            : "No fresh stories found. Try Refresh stories or check back later."}
         </p>
       ) : (
         <div className="space-y-10">
