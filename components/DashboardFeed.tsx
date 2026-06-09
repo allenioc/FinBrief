@@ -38,6 +38,7 @@ export function DashboardFeed({
   const [timeWindow, setTimeWindow] = useState<"breaking" | "today" | "week">("week");
   const [hasLoadedApi, setHasLoadedApi] = useState(initialBriefs.length > 0);
   const [lastUpdateMode, setLastUpdateMode] = useState<"daily" | "manual">("daily");
+  const [apiError, setApiError] = useState<string | null>(null);
   const { items: watchlistItems } = useWatchlist();
   const briefsRef = useRef<Brief[]>(initialBriefs);
   const isRefreshingRef = useRef(false);
@@ -72,7 +73,7 @@ export function DashboardFeed({
 
     const params = new URLSearchParams();
     if (!isDefaultFeed) params.set("q", activeQuery);
-    params.set("timeRange", timeWindow);
+    params.set("timeRange", isDefaultFeed ? "week" : timeWindow);
     params.set("limit", "20");
     params.set("page", "1");
     if (reason === "manual") {
@@ -89,7 +90,9 @@ export function DashboardFeed({
           fetchedAt: string;
           hasMore?: boolean;
           provider?: string;
+          errorMessage?: string;
         };
+        setApiError(payload.errorMessage ?? null);
         const prevIds = briefsRef.current.slice(0, 5).map((item) => item.id).join("|");
         const apiBriefs = payload.briefs ?? [];
         const provider = payload.provider ?? "mock";
@@ -113,7 +116,11 @@ export function DashboardFeed({
           const nextIds = nextBriefs.slice(0, 5).map((item) => item.id).join("|");
           setStatusMessage(prevIds === nextIds ? "You're up to date." : "Stories updated.");
         }
+      } else {
+        setApiError("Live provider request failed. Please retry later.");
       }
+    } catch {
+      setApiError("Live provider request failed. Please retry later.");
     } finally {
       if (reason === "manual") {
         setIsManualRefreshing(false);
@@ -129,7 +136,10 @@ export function DashboardFeed({
 
   useEffect(() => {
     refreshFeed("auto");
-  }, [refreshFeed]);
+    // Intentionally tied to query/default feed changes only.
+    // We avoid refetching on tab switches to reduce provider churn/rate limits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeQuery, isDefaultFeed]);
 
   useEffect(() => {
     setBriefs(initialBriefs);
@@ -140,6 +150,7 @@ export function DashboardFeed({
     setHasLoadedApi(initialBriefs.length > 0);
     setLastUpdateMode("daily");
     setTimeWindow("week");
+    setApiError(null);
   }, [activeQuery, initialBriefs]);
 
   const handleLoadMore = useCallback(async () => {
@@ -153,7 +164,7 @@ export function DashboardFeed({
     const nextPage = page + 1;
     const params = new URLSearchParams();
     if (!isDefaultFeed) params.set("q", activeQuery);
-    params.set("timeRange", timeWindow);
+    params.set("timeRange", isDefaultFeed ? "week" : timeWindow);
     params.set("limit", "20");
     params.set("page", String(nextPage));
     params.set("edition", dailyEditionKey());
@@ -163,7 +174,9 @@ export function DashboardFeed({
       const payload = (await response.json()) as {
         briefs: Brief[];
         hasMore?: boolean;
+        errorMessage?: string;
       };
+      setApiError(payload.errorMessage ?? null);
       setBriefs((prev) => {
         const existing = new Set(prev.map((item) => item.id));
         const additions = payload.briefs.filter((item) => !existing.has(item.id));
@@ -202,7 +215,17 @@ export function DashboardFeed({
     const safeB = Number.isFinite(bt) ? bt : 0;
     return safeB - safeA;
   });
-  const displayed = sortedBriefs.slice(0, visibleCount);
+  const now = Date.now();
+  const scoped = sortedBriefs.filter((brief) => {
+    const published = new Date(brief.publishedAt).getTime();
+    if (!Number.isFinite(published)) return true;
+    const ageMs = now - published;
+    if (ageMs < 0) return true;
+    if (timeWindow === "breaking") return ageMs <= 6 * 60 * 60 * 1000;
+    if (timeWindow === "today") return ageMs <= 24 * 60 * 60 * 1000;
+    return ageMs <= 7 * 24 * 60 * 60 * 1000;
+  });
+  const displayed = scoped.slice(0, visibleCount);
   const topStories = displayed.slice(0, 4);
   const marketStories = displayed.filter(
     (brief) => brief.articleType === "market news" || brief.articleType === "macro news"
@@ -249,6 +272,11 @@ export function DashboardFeed({
       {statusMessage && (
         <p className="text-sm font-medium text-fin-brand" role="status">
           {statusMessage}
+        </p>
+      )}
+      {apiError && (
+        <p className="text-sm font-medium text-status-warning" role="status">
+          {apiError}
         </p>
       )}
 

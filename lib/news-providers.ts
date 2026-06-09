@@ -656,6 +656,7 @@ export async function fetchProviderNews(
     .map((entry) => entry.error)
     .filter((entry): entry is string => Boolean(entry));
   if (merged.length === 0 && errors.length > 0) {
+    const hasRateLimit = errors.some((error) => /ratelimited|too many requests|429/i.test(error));
     return {
       provider: "error",
       query,
@@ -663,7 +664,9 @@ export async function fetchProviderNews(
       articles: [],
       totalAvailable: 0,
       providerStats,
-      errorMessage: "Live provider request failed. Please retry later.",
+      errorMessage: hasRateLimit
+        ? "News provider rate limit reached. Try again later."
+        : "Live provider request failed. Please retry later.",
     };
   }
   const start = (Math.max(1, page) - 1) * limit;
