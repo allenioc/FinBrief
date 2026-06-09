@@ -8,6 +8,7 @@ import {
 import { providerArticlesToBriefs } from "@/lib/news-normalizer";
 import { searchBriefs } from "@/lib/briefs";
 import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
+import type { Brief } from "@/lib/types";
 
 type CachedPayload = {
   query: string;
@@ -219,6 +220,30 @@ export async function GET(request: NextRequest) {
     providerParam === "alphavantage"
       ? providerParam
       : undefined;
+  // Article lookup for /brief/[id]. Served entirely from saved data — this
+  // path never calls live providers.
+  const articleId = request.nextUrl.searchParams.get("articleId")?.trim();
+  if (articleId) {
+    const indexed = await cacheGet<Brief>(`article::${articleId}`);
+    if (indexed) {
+      return NextResponse.json({ found: true, source: `index:${indexed.tier}`, article: indexed.value });
+    }
+    const broadScope = "broad-business-finance";
+    for (const pageNum of [1, 2, 3]) {
+      const record = await cacheGet<EditionRecord>(`edition::${broadScope}::week::20::${pageNum}`);
+      const match = record?.value.payload.briefs.find((brief) => brief.id === articleId);
+      if (match && record) {
+        return NextResponse.json({ found: true, source: `edition:${record.tier}`, article: match });
+      }
+    }
+    const lastGood = await cacheGet<LastGoodRecord>(`lastgood::${broadScope}::week`);
+    const staleMatch = lastGood?.value.payload.briefs.find((brief) => brief.id === articleId);
+    if (staleMatch && lastGood) {
+      return NextResponse.json({ found: true, source: `lastgood:${lastGood.tier}`, article: staleMatch });
+    }
+    return NextResponse.json({ found: false }, { status: 404 });
+  }
+
   const admin = isAdminRequest(request);
   const today = localDateKey();
   const queryKey = (query || "broad-business-finance").toLowerCase();
