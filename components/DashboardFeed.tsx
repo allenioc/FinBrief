@@ -71,7 +71,7 @@ export function DashboardFeed({
     }
 
     const params = new URLSearchParams();
-    params.set("q", activeQuery);
+    if (!isDefaultFeed) params.set("q", activeQuery);
     params.set("limit", "20");
     params.set("page", "1");
     if (reason === "manual") {
@@ -120,7 +120,7 @@ export function DashboardFeed({
       }
       isRefreshingRef.current = false;
     }
-  }, [activeQuery, initialBriefs]);
+  }, [activeQuery, initialBriefs, isDefaultFeed]);
 
   const handleRefresh = useCallback(async () => {
     await refreshFeed("manual");
@@ -150,7 +150,7 @@ export function DashboardFeed({
     setIsLoadingMore(true);
     const nextPage = page + 1;
     const params = new URLSearchParams();
-    params.set("q", activeQuery);
+    if (!isDefaultFeed) params.set("q", activeQuery);
     params.set("limit", "20");
     params.set("page", String(nextPage));
     params.set("edition", dailyEditionKey());
@@ -172,7 +172,7 @@ export function DashboardFeed({
     } finally {
       setIsLoadingMore(false);
     }
-  }, [activeQuery, briefs.length, hasMore, page, visibleCount]);
+  }, [activeQuery, briefs.length, hasMore, isDefaultFeed, page, visibleCount]);
 
   useEffect(() => {
     if (!isDefaultFeed) return;
@@ -284,7 +284,7 @@ export function DashboardFeed({
         </p>
       ) : displayed.length === 0 ? (
         <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
-          No fresh stories found for this topic. Try refreshing or searching another topic.
+          No fresh stories found. Try Refresh stories or check back later.
         </p>
       ) : (
         <div className="space-y-10">

@@ -21,6 +21,8 @@ export interface NewsProviderResponse {
   providerStats: Array<{ provider: string; count: number }>;
 }
 
+const WIDE_BROAD_FALLBACK_QUERY = "business OR finance OR economy";
+
 const QUERY_EXPANSIONS: Record<string, string> = {
   apple: "Apple OR AAPL OR iPhone OR Apple earnings",
   aapl: "Apple stock OR Apple earnings",
@@ -403,41 +405,56 @@ export async function fetchProviderNews(
   if (providers.length === 0) return null;
   const queryBatch = resolveQueryBatch(query, page);
   const perQueryLimit = Math.max(8, Math.ceil((limit * 2) / queryBatch.length));
+  const runBatch = async (batch: string[]) =>
+    Promise.all(
+      providers.flatMap((provider) =>
+        batch.map(async (singleQuery) => {
+          try {
+            if (provider === "newsapi" && process.env.NEWS_API_KEY) {
+              const articles = await fetchFromNewsApi(singleQuery, perQueryLimit, 1, process.env.NEWS_API_KEY);
+              return { provider, query: singleQuery, articles };
+            }
+            if (provider === "finnhub" && process.env.FINNHUB_API_KEY) {
+              const articles = await fetchFromFinnhub(singleQuery, perQueryLimit, 1, process.env.FINNHUB_API_KEY);
+              return { provider, query: singleQuery, articles };
+            }
+            if (provider === "polygon" && process.env.POLYGON_API_KEY) {
+              const articles = await fetchFromPolygon(singleQuery, perQueryLimit, 1, process.env.POLYGON_API_KEY);
+              return { provider, query: singleQuery, articles };
+            }
+            if (provider === "alphavantage" && process.env.ALPHA_VANTAGE_API_KEY) {
+              const articles = await fetchFromAlphaVantage(singleQuery, perQueryLimit, 1, process.env.ALPHA_VANTAGE_API_KEY);
+              return { provider, query: singleQuery, articles };
+            }
+            return { provider, query: singleQuery, articles: [] as ProviderArticle[] };
+          } catch {
+            return { provider, query: singleQuery, articles: [] as ProviderArticle[] };
+          }
+        })
+      )
+    );
 
-  const tasks = providers.flatMap((provider) =>
-    queryBatch.map(async (singleQuery) => {
-    try {
-      if (provider === "newsapi" && process.env.NEWS_API_KEY) {
-        const articles = await fetchFromNewsApi(singleQuery, perQueryLimit, 1, process.env.NEWS_API_KEY);
-        return { provider, articles };
-      }
-      if (provider === "finnhub" && process.env.FINNHUB_API_KEY) {
-        const articles = await fetchFromFinnhub(singleQuery, perQueryLimit, 1, process.env.FINNHUB_API_KEY);
-        return { provider, articles };
-      }
-      if (provider === "polygon" && process.env.POLYGON_API_KEY) {
-        const articles = await fetchFromPolygon(singleQuery, perQueryLimit, 1, process.env.POLYGON_API_KEY);
-        return { provider, articles };
-      }
-      if (provider === "alphavantage" && process.env.ALPHA_VANTAGE_API_KEY) {
-        const articles = await fetchFromAlphaVantage(singleQuery, perQueryLimit, 1, process.env.ALPHA_VANTAGE_API_KEY);
-        return { provider, articles };
-      }
-      return { provider, articles: [] as ProviderArticle[] };
-    } catch {
-      return { provider, articles: [] as ProviderArticle[] };
-    }
-  })
+  const primaryResolved = await runBatch(queryBatch);
+  let merged = dedupeArticles(primaryResolved.flatMap((entry) => entry.articles)).filter((article) =>
+    isFinanceRelevant(article, queryBatch.join(" "))
   );
+  let resolved = primaryResolved;
 
-  const resolved = await Promise.all(tasks);
+  if (merged.length === 0) {
+    const fallbackResolved = await runBatch([WIDE_BROAD_FALLBACK_QUERY]);
+    const fallbackMerged = dedupeArticles(fallbackResolved.flatMap((entry) => entry.articles)).filter((article) =>
+      isFinanceRelevant(article, WIDE_BROAD_FALLBACK_QUERY)
+    );
+    if (fallbackMerged.length > 0) {
+      merged = fallbackMerged;
+      resolved = [...primaryResolved, ...fallbackResolved];
+    }
+  }
+
   const providerStats = resolved.map((entry) => ({
     provider: entry.provider,
     count: entry.articles.length,
   }));
-  const merged = dedupeArticles(resolved.flatMap((entry) => entry.articles)).filter((article) =>
-    isFinanceRelevant(article, queryBatch.join(" "))
-  );
   const start = (Math.max(1, page) - 1) * limit;
   const paginated = merged.slice(start, start + limit);
 

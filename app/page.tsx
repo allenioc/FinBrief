@@ -10,7 +10,6 @@ import { SearchBar } from "@/components/SearchBar";
 import { WatchlistHighlights } from "@/components/WatchlistHighlights";
 import { getBriefs } from "@/lib/briefs";
 import { TRENDING_SEARCHES } from "@/lib/mock-data";
-import { BROAD_NEWS_QUERY } from "@/lib/news-constants";
 import { BRAND } from "@/lib/theme";
 
 interface HomeProps {
@@ -20,7 +19,7 @@ interface HomeProps {
 export default async function HomePage({ searchParams }: HomeProps) {
   const params = await searchParams;
   const query = params.q?.trim() ?? "";
-  const initialBriefs = await getBriefs(query || BROAD_NEWS_QUERY);
+  const initialBriefs = await getBriefs(query);
   const isTopicView = query.length > 0;
   const title = isTopicView ? `${query} news feed` : "Understand markets with clarity";
   const description = isTopicView
