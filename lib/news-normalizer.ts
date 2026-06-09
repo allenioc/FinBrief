@@ -135,11 +135,29 @@ export function normalizeProviderArticles(input: {
       sentiment,
       marketImpact,
       confidence,
-      thirtySecondVersion: buildThirtySecondVersion(article.headline, excerpt),
-      finbriefSummary: buildFinBriefSummary(article.headline, excerpt),
+      thirtySecondVersion: buildThirtySecondVersion(
+        article.headline,
+        excerpt,
+        article.source,
+        article.publishedAt
+      ),
+      finbriefSummary: buildFinBriefSummary(
+        article.headline,
+        excerpt,
+        article.source,
+        article.publishedAt
+      ),
       whatHappened: excerpt,
-      whyItMatters: buildWhyItMatters(article.headline, excerpt, type),
-      whoIsAffected: [buildWhoIsAffected(type)],
+      whyItMatters: buildWhyItMatters(
+        article.headline,
+        excerpt,
+        type,
+        article.source,
+        article.publishedAt
+      ),
+      whoIsAffected: [
+        buildWhoIsAffected(article.headline, excerpt, type, article.source, article.publishedAt),
+      ],
       keyTerms,
       bullCase: buildBullCase(article.headline, excerpt, sentiment),
       bearCase: buildBearCase(article.headline, excerpt, sentiment),

@@ -88,11 +88,6 @@ function firstSentence(text: string): string {
   return match ? normalizeWhitespace(match[0]) : cleaned;
 }
 
-function truncate(text: string, max: number): string {
-  if (text.length <= max) return text;
-  return `${text.slice(0, max - 3).trimEnd()}...`;
-}
-
 function isWeakTopic(value: string): boolean {
   const topic = normalizeWhitespace(value);
   if (topic.length < 2) return true;
@@ -109,6 +104,213 @@ function isWeakTopic(value: string): boolean {
 
 function combinedText(headline: string, excerpt: string): string {
   return normalizeWhitespace(`${headline} ${excerpt}`);
+}
+
+function splitSentences(text: string): string[] {
+  return normalizeWhitespace(text)
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => normalizeWhitespace(sentence))
+    .filter((sentence) => sentence.length > 12);
+}
+
+function isLimitedPreview(excerpt: string): boolean {
+  const cleaned = normalizeWhitespace(excerpt);
+  return (
+    !cleaned ||
+    cleaned.length < 80 ||
+    cleaned === "No summary available from provider."
+  );
+}
+
+function formatPublishedContext(publishedAt?: string): string {
+  if (!publishedAt) return "";
+  const date = new Date(publishedAt);
+  if (Number.isNaN(date.getTime())) return "";
+  return ` on ${date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+}
+
+function headlineCore(headline: string): string {
+  return stripQuotes(normalizeWhitespace(headline.replace(/\.$/, "")));
+}
+
+function normalizeForCompare(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function overlapsHeadline(text: string, headline: string): boolean {
+  const normalizedText = normalizeForCompare(text);
+  const normalizedHeadline = normalizeForCompare(headline);
+  if (!normalizedText || !normalizedHeadline) return false;
+  if (normalizedText === normalizedHeadline) return true;
+  const headlineStart = normalizedHeadline.slice(0, Math.min(40, normalizedHeadline.length));
+  return normalizedText.startsWith(headlineStart);
+}
+
+function isNearDuplicate(candidate: string, existing: string[]): boolean {
+  const normalized = normalizeForCompare(candidate);
+  return existing.some((sentence) => {
+    const other = normalizeForCompare(sentence);
+    return other === normalized || other.includes(normalized) || normalized.includes(other);
+  });
+}
+
+function cleanBullet(text: string, max = 140): string {
+  let value = normalizeWhitespace(text.replace(/\.{3,}/g, "").replace(/\.\.\.$/, ""));
+  if (value.length <= max) return value.endsWith(".") ? value : `${value}.`;
+  value = value.slice(0, max).replace(/\s+\S*$/, "").trim();
+  return value.endsWith(".") ? value : `${value}.`;
+}
+
+function formatSubjectList(subjects: string[]): string {
+  if (subjects.length === 0) return "";
+  if (subjects.length === 1) return subjects[0];
+  if (subjects.length === 2) return `${subjects[0]} and ${subjects[1]}`;
+  return `${subjects.slice(0, -1).join(", ")}, and ${subjects[subjects.length - 1]}`;
+}
+
+function extractMentionedSubjects(headline: string, excerpt: string): string[] {
+  const text = `${headline} ${excerpt}`;
+  const subjects = new Set<string>();
+  const knownNames = [
+    "Apple",
+    "Microsoft",
+    "NVIDIA",
+    "Tesla",
+    "Amazon",
+    "Alphabet",
+    "Google",
+    "Meta",
+    "Netflix",
+    "Intel",
+    "AMD",
+    "JPMorgan",
+    "Goldman Sachs",
+    "Federal Reserve",
+    "S&P 500",
+    "Nasdaq",
+  ];
+  for (const name of knownNames) {
+    if (new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text)) {
+      subjects.add(name);
+    }
+  }
+  const tickerMatches = text.match(/\b[A-Z]{2,5}\b/g) ?? [];
+  for (const ticker of tickerMatches) {
+    if (!["CEO", "CFO", "ETF", "GDP", "CPI", "FED", "USA", "USD", "AI"].includes(ticker)) {
+      subjects.add(ticker);
+    }
+  }
+  const properNounMatches = text.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b/g) ?? [];
+  for (const match of properNounMatches) {
+    if (!["The", "This", "That", "Read", "Watch", "Breaking", "Update"].includes(match.split(" ")[0])) {
+      subjects.add(match);
+    }
+  }
+  return [...subjects].slice(0, 4);
+}
+
+type StoryTheme =
+  | "earnings"
+  | "rates"
+  | "trade"
+  | "merger"
+  | "market"
+  | "regulation"
+  | "product"
+  | "general";
+
+function detectThemes(text: string): StoryTheme[] {
+  const lower = text.toLowerCase();
+  const themes: StoryTheme[] = [];
+  if (/\bearnings|revenue|profit|guidance|quarter|results\b/.test(lower)) themes.push("earnings");
+  if (/\bfed|interest rate|cpi|inflation|treasury|jobs report|monetary policy\b/.test(lower)) themes.push("rates");
+  if (/\btariff|trade war|sanction|import|export\b/.test(lower)) themes.push("trade");
+  if (/\bmerger|acquisition|takeover|buyout|deal\b/.test(lower)) themes.push("merger");
+  if (/\bstock|shares|market|index|nasdaq|s&p|wall street\b/.test(lower)) themes.push("market");
+  if (/\bregulat|lawsuit|antitrust|sec\b/.test(lower)) themes.push("regulation");
+  if (/\blaunch|product|platform|service|chip|software\b/.test(lower)) themes.push("product");
+  if (themes.length === 0) themes.push("general");
+  return themes;
+}
+
+interface ArticlePreviewContext {
+  headline: string;
+  excerpt: string;
+  source: string;
+  publishedAt?: string;
+  sentences: string[];
+  limited: boolean;
+  subjects: string[];
+  themes: StoryTheme[];
+}
+
+function buildArticlePreviewContext(
+  headline: string,
+  excerpt: string,
+  source = "",
+  publishedAt?: string
+): ArticlePreviewContext {
+  const cleanedHeadline = headlineCore(headline);
+  const cleanedExcerpt = normalizeWhitespace(excerpt);
+  const sentences = splitSentences(cleanedExcerpt);
+  const text = combinedText(cleanedHeadline, cleanedExcerpt);
+  return {
+    headline: cleanedHeadline,
+    excerpt: cleanedExcerpt,
+    source: normalizeWhitespace(source),
+    publishedAt,
+    sentences,
+    limited: isLimitedPreview(cleanedExcerpt),
+    subjects: extractMentionedSubjects(cleanedHeadline, cleanedExcerpt),
+    themes: detectThemes(text),
+  };
+}
+
+function describeStoryFocus(ctx: ArticlePreviewContext): string {
+  if (ctx.subjects.length > 0) {
+    return `The available preview frames the story around ${formatSubjectList(ctx.subjects)} and the development described in the excerpt.`;
+  }
+  if (ctx.themes.includes("earnings")) {
+    return "The preview appears to focus on company financial results and how the reported numbers compare with expectations.";
+  }
+  if (ctx.themes.includes("rates")) {
+    return "The preview appears to focus on macro or policy developments that could influence borrowing costs and financial conditions.";
+  }
+  if (ctx.themes.includes("merger")) {
+    return "The preview appears to focus on a corporate deal and how the parties involved may be repositioned.";
+  }
+  return "The preview suggests a business or finance development that readers can evaluate more fully in the linked source article.";
+}
+
+function pickEventSentence(ctx: ArticlePreviewContext): string {
+  const candidate =
+    ctx.sentences.find((sentence) => !overlapsHeadline(sentence, ctx.headline)) ??
+    ctx.sentences[0];
+  if (candidate && !overlapsHeadline(candidate, ctx.headline)) return candidate;
+  if (ctx.sentences[0]) {
+    return `The source preview describes the development as follows: ${ctx.sentences[0]}`;
+  }
+  return `Based on the available source preview, this story appears to cover ${ctx.headline.toLowerCase()}.`;
+}
+
+function buildWatchBullet(ctx: ArticlePreviewContext): string {
+  const lower = ctx.excerpt.toLowerCase();
+  if (/\bguidance|outlook|forecast|expects|expected\b/.test(lower)) {
+    return "Watch whether management guidance or analyst expectations change after the full report is published.";
+  }
+  if (/\bquarter|results|earnings|revenue\b/.test(lower)) {
+    return "Watch for the next official filing, earnings call, or follow-up report on the same topic.";
+  }
+  if (/\bfed|rate|inflation|cpi\b/.test(lower)) {
+    return "Watch for the next policy statement, economic release, or market reaction tied to the same theme.";
+  }
+  if (/\bdeal|merger|acquisition|takeover\b/.test(lower)) {
+    return "Watch for regulatory filings, counteroffers, or updates on whether the deal progresses.";
+  }
+  if (ctx.subjects.length > 0) {
+    return `Watch for follow-up reporting on ${formatSubjectList(ctx.subjects)} from ${ctx.source || "the publisher"}.`;
+  }
+  return "Watch for follow-up reporting that adds detail beyond the current preview.";
 }
 
 export function estimateSentiment(text: string): {
@@ -190,49 +392,69 @@ export function extractKeyTerms(text: string): { term: string; definition: strin
   }));
 }
 
-/** FinBrief summary: what happened only — no impact analysis or filler. */
-export function buildFinBriefSummary(headline: string, excerpt: string): string {
-  const title = stripQuotes(normalizeWhitespace(headline.replace(/\.$/, "")));
-  const detail = excerpt ? firstSentence(excerpt) : "";
+/** FinBrief summary: 4–6 factual sentences drawn from the source preview. */
+export function buildFinBriefSummary(
+  headline: string,
+  excerpt: string,
+  source = "",
+  publishedAt?: string
+): string {
+  const ctx = buildArticlePreviewContext(headline, excerpt, source, publishedAt);
 
-  if (detail && detail.length > 30) {
-    const detailLower = detail.toLowerCase();
-    const titleStart = title.toLowerCase().slice(0, Math.min(24, title.length));
-    if (titleStart && detailLower.startsWith(titleStart)) {
-      return detail;
+  if (ctx.limited) {
+    return [
+      `Based on the available source preview, this story appears to cover ${ctx.headline.toLowerCase()}.`,
+      ctx.source
+        ? `${ctx.source} published the item${formatPublishedContext(publishedAt)}.`
+        : "The publisher shared only a short preview.",
+      "FinBrief can summarize the headline topic here, but the full article should be read for complete reporting.",
+    ].join(" ");
+  }
+
+  const summary: string[] = [];
+  summary.push(pickEventSentence(ctx));
+
+  if (ctx.subjects.length > 0) {
+    summary.push(`The report involves ${formatSubjectList(ctx.subjects)}.`);
+  } else if (ctx.sentences[1] && !overlapsHeadline(ctx.sentences[1], ctx.headline)) {
+    summary.push(ctx.sentences[1]);
+  }
+
+  for (const sentence of ctx.sentences.slice(ctx.subjects.length > 0 ? 1 : 2, 5)) {
+    if (summary.length >= 6) break;
+    if (!isNearDuplicate(sentence, summary) && !overlapsHeadline(sentence, ctx.headline)) {
+      summary.push(sentence);
     }
-    return `${title}. ${detail}`;
   }
 
-  if (title) {
-    return `${title}. The publisher provided limited detail in the available excerpt.`;
+  if (ctx.source && summary.length < 6) {
+    summary.push(
+      `${ctx.source} published the report${formatPublishedContext(publishedAt)}, and the preview points to a ${ctx.themes[0] === "general" ? "business" : ctx.themes[0]}-related update.`
+    );
   }
 
-  return "The source shared a brief update. Read the full article for complete reporting.";
+  if (summary.length < 4) {
+    summary.push(describeStoryFocus(ctx));
+  }
+
+  return summary.slice(0, 6).join(" ");
 }
 
-/** Three short bullets for the 30-second version. */
-export function buildThirtySecondVersion(headline: string, excerpt: string): string {
-  const title = stripQuotes(normalizeWhitespace(headline.replace(/\.$/, "")));
-  const detail = excerpt ? firstSentence(excerpt) : "";
-  const text = combinedText(headline, excerpt).toLowerCase();
+/** Three useful bullets: what happened, why it matters, what to watch. */
+export function buildThirtySecondVersion(
+  headline: string,
+  excerpt: string,
+  source = "",
+  publishedAt?: string
+): string {
+  const ctx = buildArticlePreviewContext(headline, excerpt, source, publishedAt);
+  const why = buildWhyItMatters(headline, excerpt, inferArticleType(combinedText(headline, excerpt)), source, publishedAt);
 
-  const eventBullet = truncate(title || "A new finance headline was published.", 110);
+  const eventBullet = cleanBullet(pickEventSentence(ctx));
+  const impactBullet = cleanBullet(firstSentence(why));
+  const watchBullet = cleanBullet(buildWatchBullet(ctx));
 
-  const detailBullet = detail
-    ? truncate(detail, 120)
-    : "The available summary is short; the linked source has the full story.";
-
-  let watchBullet = "Confirm details in the original source before acting on the headline alone.";
-  if (text.includes("earnings") || text.includes("revenue") || text.includes("guidance")) {
-    watchBullet = "Watch for official filings, guidance, and how related stocks react.";
-  } else if (text.includes("fed") || text.includes("rate") || text.includes("inflation")) {
-    watchBullet = "Watch bond yields, rate-sensitive sectors, and broad index moves.";
-  } else if (text.includes("merger") || text.includes("acquisition") || text.includes("deal")) {
-    watchBullet = "Watch regulatory updates and how peer companies trade.";
-  }
-
-  return [`• ${eventBullet}`, `• ${detailBullet}`, `• ${watchBullet}`].join("\n");
+  return [`• ${eventBullet}`, `• ${impactBullet}`, `• ${watchBullet}`].join("\n");
 }
 
 export function parseThirtySecondBullets(value: string): string[] {
@@ -245,55 +467,110 @@ export function parseThirtySecondBullets(value: string): string[] {
 export function buildWhyItMatters(
   headline: string,
   excerpt: string,
-  articleType: ReturnType<typeof inferArticleType>
+  articleType: ReturnType<typeof inferArticleType>,
+  source = "",
+  publishedAt?: string
 ): string {
-  const text = combinedText(headline, excerpt).toLowerCase();
+  void articleType;
+  const ctx = buildArticlePreviewContext(headline, excerpt, source, publishedAt);
 
-  if (!excerpt || excerpt.length < 50) {
-    if (articleType === "macro") {
-      return "Macro headlines can shift expectations for rates, inflation, and broad market risk appetite.";
-    }
-    if (articleType === "etf" || articleType === "market") {
-      return "Index and market headlines can move ETF prices and portfolio returns for everyday investors.";
-    }
-    return "Company and sector headlines can change how investors price related stocks and funds.";
-  }
-
-  if (text.includes("fed") || text.includes("interest rate") || text.includes("cpi") || text.includes("inflation")) {
-    return "Policy and inflation news can change rate expectations, which often flows through to bonds, banks, housing, and growth-stock valuations.";
-  }
-  if (text.includes("earnings") || text.includes("revenue") || text.includes("guidance")) {
-    return "Corporate results update profit expectations and management outlook, which can move the stock and peer companies in the same industry.";
-  }
-  if (text.includes("tariff") || text.includes("trade") || text.includes("sanction")) {
-    return "Trade-policy headlines can affect supply chains, import costs, and exporters with heavy international exposure.";
-  }
-  if (text.includes("merger") || text.includes("acquisition") || text.includes("takeover")) {
-    return "Deal news can reprice the companies involved and set a benchmark for similar assets in the same sector.";
-  }
-  if (articleType === "etf" || text.includes(" s&p") || text.includes("nasdaq")) {
-    return "Benchmark and ETF-related news can influence passive fund flows and how investors gauge overall market direction.";
-  }
-  if (articleType === "sector") {
-    return "Sector-specific developments can spread to competitors, suppliers, and sector ETFs that track the same industry.";
+  if (ctx.limited) {
+    return [
+      "Based on the available source preview, the full significance of this story is not yet clear from the excerpt alone.",
+      ctx.subjects.length > 0
+        ? `It may matter to readers following ${formatSubjectList(ctx.subjects)} once the complete article is available.`
+        : "It may matter to readers tracking the topic named in the headline once the complete article is available.",
+    ].join(" ");
   }
 
-  return "The development may change how investors assess risk and opportunity in related companies and market sectors.";
+  const parts: string[] = [];
+  const significanceSentence = ctx.sentences.find((sentence) =>
+    /\bbecause|amid|after|could|may|expected|plan|announced|warn|cut|raise|deal|growth|decline|profit|loss\b/i.test(
+      sentence
+    )
+  );
+
+  if (significanceSentence && !overlapsHeadline(significanceSentence, ctx.headline)) {
+    parts.push(significanceSentence);
+  } else if (ctx.sentences[1] && !overlapsHeadline(ctx.sentences[1], ctx.headline)) {
+    parts.push(`The preview adds that ${ctx.sentences[1].charAt(0).toLowerCase()}${ctx.sentences[1].slice(1)}`);
+  }
+
+  if (ctx.themes.includes("earnings")) {
+    parts.push(
+      "Earnings-related updates can change how investors judge recent business performance and near-term expectations."
+    );
+  } else if (ctx.themes.includes("rates")) {
+    parts.push("Macro and policy updates can influence borrowing costs, bond yields, and rate-sensitive parts of the economy.");
+  } else if (ctx.themes.includes("trade")) {
+    parts.push("Trade-policy developments can affect companies with cross-border supply chains or overseas sales exposure.");
+  } else if (ctx.themes.includes("merger")) {
+    parts.push("Deal news can shift expectations for the companies involved and for similar assets in the same industry.");
+  } else if (ctx.themes.includes("regulation")) {
+    parts.push("Regulatory or legal developments can change compliance costs and strategic options for the parties involved.");
+  } else if (ctx.themes.includes("product")) {
+    parts.push("Product and strategy updates can matter when they change how a company competes or grows.");
+  } else if (ctx.themes.includes("market")) {
+    parts.push("Market-focused reports can matter when they change how investors interpret recent price action or index direction.");
+  }
+
+  if (ctx.subjects.length > 0 && parts.length < 4) {
+    parts.push(
+      `For readers following ${formatSubjectList(ctx.subjects)}, the preview offers an early look at a development reported by ${ctx.source || "the publisher"}.`
+    );
+  } else if (parts.length < 2) {
+    parts.push(describeStoryFocus(ctx));
+  }
+
+  return parts.slice(0, 4).join(" ");
 }
 
-export function buildWhoIsAffected(articleType: ReturnType<typeof inferArticleType>): string {
-  switch (articleType) {
-    case "macro":
-      return "Bond investors, borrowers, rate-sensitive sectors such as housing and utilities, and anyone holding broad market index funds.";
-    case "etf":
-      return "Investors holding index and sector ETFs, plus fund managers whose performance is tied to major benchmarks.";
-    case "market":
-      return "Equity investors, retirement accounts with stock exposure, and active traders watching index direction.";
-    case "sector":
-      return "Investors concentrated in the affected industry, along with diversified funds with overlapping sector holdings.";
-    default:
-      return "Shareholders of the companies mentioned, industry peers, and investors in related sector funds.";
+export function buildWhoIsAffected(
+  headline: string,
+  excerpt: string,
+  articleType: ReturnType<typeof inferArticleType>,
+  source = "",
+  publishedAt?: string
+): string {
+  void articleType;
+  const ctx = buildArticlePreviewContext(headline, excerpt, source, publishedAt);
+
+  if (ctx.limited) {
+    return [
+      "Based on the available source preview, the parties most directly involved are those named in the headline.",
+      ctx.subjects.length > 0
+        ? `That includes ${formatSubjectList(ctx.subjects)}, although broader effects depend on details in the full article.`
+        : "Broader effects depend on details that are not included in the preview.",
+    ].join(" ");
   }
+
+  const parts: string[] = [];
+
+  if (ctx.subjects.length > 0) {
+    parts.push(`The preview directly references ${formatSubjectList(ctx.subjects)}, making them the clearest audience for the update.`);
+  }
+
+  if (ctx.themes.includes("earnings") && ctx.subjects.length > 0) {
+    parts.push(
+      `Investors, analysts, and employees with exposure to ${formatSubjectList(ctx.subjects)} may reassess expectations after the reported update.`
+    );
+  } else if (ctx.themes.includes("rates")) {
+    parts.push("Borrowers, savers, and institutions sensitive to interest-rate changes may feel downstream effects if the development shifts rate expectations.");
+  } else if (ctx.themes.includes("trade")) {
+    parts.push("Importers, exporters, and companies with international supply chains may be affected when trade-policy news changes cost or demand assumptions.");
+  } else if (ctx.themes.includes("merger")) {
+    parts.push("Employees, customers, and rival firms connected to the companies named in the report may be affected by deal progress or failure.");
+  } else if (ctx.themes.includes("regulation")) {
+    parts.push("Compliance teams, legal stakeholders, and competing firms in the same market may need to respond if the reported development changes the rules of the industry.");
+  } else if (ctx.sentences[1]) {
+    parts.push(`The excerpt also suggests relevance for readers tracking the same business context described by ${ctx.source || "the publisher"}.`);
+  }
+
+  if (parts.length < 2) {
+    parts.push(`Readers researching the topic covered in ${ctx.source || "the source"} preview may use the story as an initial reference point.`);
+  }
+
+  return parts.slice(0, 4).join(" ");
 }
 
 export function buildBullCase(headline: string, excerpt: string, sentiment: Sentiment): string {
