@@ -60,6 +60,7 @@ export interface ProviderRunStatus {
   attempted: boolean;
   status: "success" | "error" | "skipped_cooldown" | "not_configured";
   articleCount: number;
+  cooldownRemainingMs: number;
   errorMessage?: string;
 }
 
@@ -102,6 +103,24 @@ const WIDE_BROAD_FALLBACK_QUERY = "business OR finance OR economy";
 const PROVIDER_COOLDOWN_MS = 5 * 60 * 1000;
 const RATE_LIMIT_COOLDOWN_MS = 15 * 60 * 1000;
 const providerCooldownByName = new Map<ProviderName, { until: number; reason: string }>();
+
+function safeProviderErrorMessage(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map((entry) => safeProviderErrorMessage(entry)).join(" | ");
+  if (value && typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.message === "string") return obj.message;
+    if (typeof obj.error === "string") return obj.error;
+    if (typeof obj.detail === "string") return obj.detail;
+    if (typeof obj.title === "string") return obj.title;
+    try {
+      return JSON.stringify(obj).slice(0, 300);
+    } catch {
+      return "Unknown provider error";
+    }
+  }
+  return "Unknown provider error";
+}
 
 const QUERY_EXPANSIONS: Record<string, string> = {
   apple: "Apple OR AAPL OR iPhone OR Apple earnings",
@@ -281,7 +300,7 @@ async function fetchFromNewsApi(
     }>;
   };
   if (!response.ok || payload.status === "error") {
-    const safeMessage = payload.message || `NewsAPI request failed (${response.status})`;
+    const safeMessage = safeProviderErrorMessage(payload.message) || `NewsAPI request failed (${response.status})`;
     const safeCode = payload.code || "newsapi_error";
     throw new Error(`${safeCode}: ${safeMessage}`);
   }
@@ -330,7 +349,7 @@ async function fetchFromGNews(
     }>;
   };
   if (!response.ok || (payload.errors && payload.errors.length > 0)) {
-    const msg = payload.errors?.[0] || `GNews request failed (${response.status})`;
+    const msg = safeProviderErrorMessage(payload.errors?.[0]) || `GNews request failed (${response.status})`;
     throw new Error(`gnews_error: ${msg}`);
   }
   const articles =
@@ -381,7 +400,10 @@ async function fetchFromTheNewsApi(
     }>;
   };
   if (!response.ok || payload.error || payload.message) {
-    const msg = payload.error || payload.message || `TheNewsAPI request failed (${response.status})`;
+    const msg =
+      safeProviderErrorMessage(payload.error) ||
+      safeProviderErrorMessage(payload.message) ||
+      `TheNewsAPI request failed (${response.status})`;
     throw new Error(`thenewsapi_error: ${msg}`);
   }
   const articles =
@@ -785,9 +807,12 @@ export async function fetchProviderNews(
   query: string,
   limit: number,
   page: number,
-  timeRange: ProviderTimeRange = "week"
+  timeRange: ProviderTimeRange = "week",
+  options?: { providerFilter?: ProviderName }
 ): Promise<NewsProviderResponse | null> {
-  const providers = configuredProviders();
+  const providers = configuredProviders().filter(
+    (provider) => !options?.providerFilter || provider === options.providerFilter
+  );
   if (providers.length === 0) return null;
   const queryBatch = resolveQueryBatch(query, page);
   const perQueryLimit = Math.max(4, Math.ceil((limit * 1.5) / Math.max(1, queryBatch.length)));
@@ -800,6 +825,7 @@ export async function fetchProviderNews(
         attempted: false,
         status: "not_configured",
         articleCount: 0,
+        cooldownRemainingMs: 0,
       });
     }
     const resolved = await Promise.all(
@@ -814,6 +840,7 @@ export async function fetchProviderNews(
               attempted: false,
               status: "skipped_cooldown",
               articleCount: existing?.articleCount ?? 0,
+              cooldownRemainingMs: Math.max(0, cooldown.until - Date.now()),
               errorMessage: cooldown.reason,
             });
             return {
@@ -852,6 +879,7 @@ export async function fetchProviderNews(
               attempted: true,
               status: "success",
               articleCount: (existing?.articleCount ?? 0) + articles.length,
+              cooldownRemainingMs: 0,
             });
             return {
               provider,
@@ -869,6 +897,10 @@ export async function fetchProviderNews(
               attempted: true,
               status: "error",
               articleCount: existing?.articleCount ?? 0,
+              cooldownRemainingMs: Math.max(
+                0,
+                (getProviderCooldown(provider)?.until ?? 0) - Date.now()
+              ),
               errorMessage: reason,
             });
             return {

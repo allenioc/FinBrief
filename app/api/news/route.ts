@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { MOCK_BRIEFS } from "@/lib/articles-data";
 import {
-  debugNewsApiQuery,
   fetchProviderNews,
   getProviderDebugStatuses,
   type ProviderTimeRange,
@@ -164,26 +163,49 @@ export async function GET(request: NextRequest) {
   const debug = request.nextUrl.searchParams.get("debug") === "true";
   const fresh = request.nextUrl.searchParams.get("fresh");
   const timeRange = normalizeTimeRange(request.nextUrl.searchParams.get("timeRange"));
+  const providerParam = request.nextUrl.searchParams.get("provider")?.toLowerCase();
+  const providerFilter =
+    providerParam === "newsapi" ||
+    providerParam === "gnews" ||
+    providerParam === "thenewsapi" ||
+    providerParam === "finnhub" ||
+    providerParam === "polygon" ||
+    providerParam === "alphavantage"
+      ? providerParam
+      : undefined;
   if (debug) {
-    const newsApiDiagnostics = await debugNewsApiQuery({
-      query: query || "business",
-      limit,
-      page,
-      timeRange,
+    const providerRun = await fetchProviderNews(query, limit, page, timeRange, {
+      providerFilter,
     });
-    const providerRun = await fetchProviderNews(query, limit, page, timeRange);
+    const statuses =
+      providerRun?.providerRunStatuses ??
+      (providerFilter
+        ? [
+            {
+              provider: providerFilter,
+              configured: false,
+              attempted: false,
+              status: "not_configured",
+              articleCount: 0,
+              cooldownRemainingMs: 0,
+            },
+          ]
+        : []);
     return NextResponse.json({
-      ...newsApiDiagnostics,
       providers: getProviderDebugStatuses(),
       configured: {
         newsapi: Boolean(process.env.NEWS_API_KEY),
         gnews: Boolean(process.env.GNEWS_API_KEY),
         thenewsapi: Boolean(process.env.THENEWSAPI_KEY),
       },
-      providerStatuses: providerRun?.providerRunStatuses ?? [],
+      providerFilter: providerFilter ?? "all",
+      query,
+      timeRange,
+      providerStatuses: statuses,
       providerCounts: providerRun?.providerStats ?? [],
       providerErrorMessage: providerRun?.errorMessage,
-      timeRange,
+      mergedArticleCount: providerRun?.articles?.length ?? 0,
+      finalProvider: providerRun?.provider ?? "none",
     });
   }
   const bust = fresh === "true" || fresh === "1" || Boolean(request.nextUrl.searchParams.get("bust"));
