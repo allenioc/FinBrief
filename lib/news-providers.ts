@@ -19,6 +19,30 @@ export interface NewsProviderResponse {
   articles: ProviderArticle[];
   totalAvailable: number;
   providerStats: Array<{ provider: string; count: number }>;
+  errorMessage?: string;
+}
+
+export type ProviderTimeRange = "breaking" | "today" | "week";
+
+export interface NewsApiDebugResponse {
+  provider: "newsapi";
+  hasNewsApiKey: boolean;
+  query: string;
+  expandedQuery: string;
+  endpoint: string;
+  fromDate: string;
+  toDate: string;
+  httpStatus?: number;
+  newsApiStatus?: string;
+  newsApiTotalResults?: number;
+  rawArticleCount: number;
+  afterValidityCount: number;
+  afterRelevanceCount: number;
+  afterTimeRangeCount: number;
+  firstRawTitles: string[];
+  removedReasons: Record<string, number>;
+  errorCode?: string;
+  errorMessage?: string;
 }
 
 const WIDE_BROAD_FALLBACK_QUERY = "business OR finance OR economy";
@@ -116,14 +140,45 @@ function isTickerLike(query: string): boolean {
   return /^[A-Z]{1,5}$/.test(compact);
 }
 
+function resolveTimeWindow(timeRange: ProviderTimeRange): { fromDate: string; toDate: string } {
+  const now = new Date();
+  const end = new Date(now);
+  const start = new Date(now);
+  if (timeRange === "today") {
+    start.setHours(start.getHours() - 24);
+  } else {
+    // breaking and week both use a 7-day pull window; breaking is handled by UI/API ordering.
+    start.setDate(start.getDate() - 7);
+  }
+  return {
+    fromDate: start.toISOString(),
+    toDate: end.toISOString(),
+  };
+}
+
+function inTimeRange(publishedAt: string | undefined, timeRange: ProviderTimeRange): boolean {
+  if (!publishedAt) return true;
+  const value = new Date(publishedAt).getTime();
+  if (!Number.isFinite(value)) return true;
+  const ageMs = Date.now() - value;
+  if (ageMs < 0) return true;
+  if (timeRange === "today") return ageMs <= 24 * 60 * 60 * 1000;
+  return ageMs <= 7 * 24 * 60 * 60 * 1000;
+}
+
 async function fetchFromNewsApi(
   query: string,
   limit: number,
   page: number,
-  apiKey: string
+  apiKey: string,
+  timeRange: ProviderTimeRange
 ): Promise<ProviderArticle[]> {
-  const q = encodeURIComponent(expandNewsQuery(query));
-  const url = `https://newsapi.org/v2/everything?q=${q}&language=en&sortBy=publishedAt&pageSize=${Math.min(
+  const expandedQuery = expandNewsQuery(query);
+  const q = encodeURIComponent(expandedQuery);
+  const { fromDate, toDate } = resolveTimeWindow(timeRange);
+  const url = `https://newsapi.org/v2/everything?q=${q}&language=en&sortBy=publishedAt&from=${encodeURIComponent(
+    fromDate
+  )}&to=${encodeURIComponent(toDate)}&pageSize=${Math.min(
     50,
     limit
   )}&page=${Math.max(1, page)}`;
@@ -131,8 +186,11 @@ async function fetchFromNewsApi(
     headers: { "X-Api-Key": apiKey },
     next: { revalidate: 900 },
   });
-  if (!response.ok) throw new Error(`NewsAPI request failed (${response.status})`);
   const payload = (await response.json()) as {
+    status?: string;
+    code?: string;
+    message?: string;
+    totalResults?: number;
     articles?: Array<{
       title?: string;
       source?: { name?: string };
@@ -144,6 +202,11 @@ async function fetchFromNewsApi(
       content?: string;
     }>;
   };
+  if (!response.ok || payload.status === "error") {
+    const safeMessage = payload.message || `NewsAPI request failed (${response.status})`;
+    const safeCode = payload.code || "newsapi_error";
+    throw new Error(`${safeCode}: ${safeMessage}`);
+  }
   const articles =
     payload.articles?.map((article, index) => ({
       id: `newsapi-${asId(article.url ?? article.title ?? `${index}`)}`,
@@ -157,6 +220,130 @@ async function fetchFromNewsApi(
       content: article.content ?? undefined,
     })) ?? [];
   return limitArticles(articles, limit);
+}
+
+export async function debugNewsApiQuery(params: {
+  query: string;
+  limit: number;
+  page: number;
+  timeRange: ProviderTimeRange;
+}): Promise<NewsApiDebugResponse> {
+  const apiKey = process.env.NEWS_API_KEY;
+  const query = params.query.trim() || "business";
+  const expandedQuery = expandNewsQuery(query);
+  const { fromDate, toDate } = resolveTimeWindow(params.timeRange);
+  const endpoint = `https://newsapi.org/v2/everything?q=${encodeURIComponent(
+    expandedQuery
+  )}&language=en&sortBy=publishedAt&from=${encodeURIComponent(fromDate)}&to=${encodeURIComponent(
+    toDate
+  )}&pageSize=${Math.min(50, params.limit)}&page=${Math.max(1, params.page)}`;
+
+  if (!apiKey) {
+    return {
+      provider: "newsapi",
+      hasNewsApiKey: false,
+      query,
+      expandedQuery,
+      endpoint,
+      fromDate,
+      toDate,
+      rawArticleCount: 0,
+      afterValidityCount: 0,
+      afterRelevanceCount: 0,
+      afterTimeRangeCount: 0,
+      firstRawTitles: [],
+      removedReasons: { missing_news_api_key: 1 },
+      errorCode: "missing_api_key",
+      errorMessage: "NEWS_API_KEY is not configured.",
+    };
+  }
+
+  const response = await fetch(endpoint, {
+    headers: { "X-Api-Key": apiKey },
+    cache: "no-store",
+  });
+  const payload = (await response.json()) as {
+    status?: string;
+    code?: string;
+    message?: string;
+    totalResults?: number;
+    articles?: Array<{
+      title?: string;
+      source?: { name?: string };
+      publishedAt?: string;
+      url?: string;
+      description?: string;
+      author?: string;
+      urlToImage?: string;
+      content?: string;
+    }>;
+  };
+
+  const rawArticles = payload.articles ?? [];
+  const removedReasons: Record<string, number> = {};
+  const addReason = (reason: string) => {
+    removedReasons[reason] = (removedReasons[reason] ?? 0) + 1;
+  };
+
+  const validityPassed: ProviderArticle[] = [];
+  for (const item of rawArticles) {
+    if (!item.title?.trim()) {
+      addReason("missing_title");
+      continue;
+    }
+    if (!item.url?.trim()) {
+      addReason("missing_url");
+      continue;
+    }
+    if (!item.source?.name?.trim()) {
+      addReason("missing_source");
+      continue;
+    }
+    validityPassed.push({
+      id: `newsapi-${asId(item.url ?? item.title ?? "unknown")}`,
+      headline: item.title,
+      source: item.source.name,
+      author: item.author ?? undefined,
+      publishedAt: coerceDate(item.publishedAt),
+      imageUrl: item.urlToImage ?? undefined,
+      originalUrl: item.url,
+      excerpt: item.description ?? item.content ?? "No summary available from provider.",
+      content: item.content ?? undefined,
+    });
+  }
+
+  const relevancePassed = validityPassed.filter((article) => isFinanceRelevant(article, query));
+  const afterRelevanceCount = relevancePassed.length;
+  if (afterRelevanceCount < validityPassed.length) {
+    addReason("filtered_non_finance_relevance");
+  }
+  const timeRangePassed = relevancePassed.filter((article) =>
+    inTimeRange(article.publishedAt, params.timeRange)
+  );
+  if (timeRangePassed.length < relevancePassed.length) {
+    addReason("filtered_outside_time_range");
+  }
+
+  return {
+    provider: "newsapi",
+    hasNewsApiKey: true,
+    query,
+    expandedQuery,
+    endpoint,
+    fromDate,
+    toDate,
+    httpStatus: response.status,
+    newsApiStatus: payload.status,
+    newsApiTotalResults: payload.totalResults,
+    rawArticleCount: rawArticles.length,
+    afterValidityCount: validityPassed.length,
+    afterRelevanceCount,
+    afterTimeRangeCount: timeRangePassed.length,
+    firstRawTitles: rawArticles.slice(0, 3).map((item) => item.title ?? "Untitled"),
+    removedReasons,
+    errorCode: payload.code,
+    errorMessage: payload.status === "error" ? payload.message : undefined,
+  };
 }
 
 async function fetchFromFinnhub(
@@ -289,7 +476,7 @@ function configuredProviders() {
 }
 
 function resolveQueryBatch(query: string, page: number): string[] {
-  const perPage = 8;
+  const perPage = 4;
   const normalized = query.trim().toLowerCase();
   if (normalized && normalized !== BROAD_NEWS_QUERY) {
     const directByPhrase = new Set<string>();
@@ -312,10 +499,8 @@ function resolveQueryBatch(query: string, page: number): string[] {
       (candidate) => candidate.toLowerCase() === normalized
     );
     if (exactBroadIndex >= 0) {
-      return Array.from(
-        { length: perPage },
-        (_, i) => BROAD_FINANCE_QUERIES[(exactBroadIndex + i) % BROAD_FINANCE_QUERIES.length]
-      );
+      // A single broad keyword query (e.g. "business") should stay a single API request.
+      return [query];
     }
     // If a user enters a broad phrase (e.g. "business finance markets"),
     // fan out to multiple broad queries instead of one strict full-string query.
@@ -399,7 +584,8 @@ function dedupeArticles(items: ProviderArticle[]): ProviderArticle[] {
 export async function fetchProviderNews(
   query: string,
   limit: number,
-  page: number
+  page: number,
+  timeRange: ProviderTimeRange = "week"
 ): Promise<NewsProviderResponse | null> {
   const providers = configuredProviders();
   if (providers.length === 0) return null;
@@ -411,24 +597,35 @@ export async function fetchProviderNews(
         batch.map(async (singleQuery) => {
           try {
             if (provider === "newsapi" && process.env.NEWS_API_KEY) {
-              const articles = await fetchFromNewsApi(singleQuery, perQueryLimit, 1, process.env.NEWS_API_KEY);
-              return { provider, query: singleQuery, articles };
+              const articles = await fetchFromNewsApi(
+                singleQuery,
+                perQueryLimit,
+                1,
+                process.env.NEWS_API_KEY,
+                timeRange
+              );
+              return { provider, query: singleQuery, articles, error: null as string | null };
             }
             if (provider === "finnhub" && process.env.FINNHUB_API_KEY) {
               const articles = await fetchFromFinnhub(singleQuery, perQueryLimit, 1, process.env.FINNHUB_API_KEY);
-              return { provider, query: singleQuery, articles };
+              return { provider, query: singleQuery, articles, error: null as string | null };
             }
             if (provider === "polygon" && process.env.POLYGON_API_KEY) {
               const articles = await fetchFromPolygon(singleQuery, perQueryLimit, 1, process.env.POLYGON_API_KEY);
-              return { provider, query: singleQuery, articles };
+              return { provider, query: singleQuery, articles, error: null as string | null };
             }
             if (provider === "alphavantage" && process.env.ALPHA_VANTAGE_API_KEY) {
               const articles = await fetchFromAlphaVantage(singleQuery, perQueryLimit, 1, process.env.ALPHA_VANTAGE_API_KEY);
-              return { provider, query: singleQuery, articles };
+              return { provider, query: singleQuery, articles, error: null as string | null };
             }
-            return { provider, query: singleQuery, articles: [] as ProviderArticle[] };
-          } catch {
-            return { provider, query: singleQuery, articles: [] as ProviderArticle[] };
+            return { provider, query: singleQuery, articles: [] as ProviderArticle[], error: null as string | null };
+          } catch (error) {
+            return {
+              provider,
+              query: singleQuery,
+              articles: [] as ProviderArticle[],
+              error: error instanceof Error ? error.message : "Provider request failed",
+            };
           }
         })
       )
@@ -455,6 +652,20 @@ export async function fetchProviderNews(
     provider: entry.provider,
     count: entry.articles.length,
   }));
+  const errors = resolved
+    .map((entry) => entry.error)
+    .filter((entry): entry is string => Boolean(entry));
+  if (merged.length === 0 && errors.length > 0) {
+    return {
+      provider: "error",
+      query,
+      fetchedAt: new Date().toISOString(),
+      articles: [],
+      totalAvailable: 0,
+      providerStats,
+      errorMessage: "Live provider request failed. Please retry later.",
+    };
+  }
   const start = (Math.max(1, page) - 1) * limit;
   const paginated = merged.slice(start, start + limit);
 

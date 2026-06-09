@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { MOCK_BRIEFS } from "@/lib/articles-data";
-import { fetchProviderNews } from "@/lib/news-providers";
+import {
+  debugNewsApiQuery,
+  fetchProviderNews,
+  type ProviderTimeRange,
+} from "@/lib/news-providers";
 import { providerArticlesToBriefs } from "@/lib/news-normalizer";
 import { searchBriefs } from "@/lib/briefs";
 
@@ -20,9 +24,7 @@ type CachedPayload = {
   briefs: ReturnType<typeof providerArticlesToBriefs>["briefs"];
 };
 
-type TimeRange = "breaking" | "today" | "week";
-
-function normalizeTimeRange(input: string | null): TimeRange {
+function normalizeTimeRange(input: string | null): ProviderTimeRange {
   if (input === "breaking" || input === "today" || input === "week") return input;
   return "week";
 }
@@ -41,10 +43,10 @@ function publishedTime(iso?: string): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-function inTimeRange(iso: string | undefined, range: TimeRange): boolean {
+function inTimeRange(iso: string | undefined, range: ProviderTimeRange): boolean {
   if (range === "breaking") return true;
   const value = publishedTime(iso);
-  if (!value) return false;
+  if (!value) return true;
   const ageMs = Date.now() - value;
   if (ageMs < 0) return true;
   if (range === "today") return ageMs <= 24 * 60 * 60 * 1000;
@@ -157,8 +159,18 @@ export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("q")?.trim() ?? "";
   const limit = Math.min(50, Math.max(8, Number(request.nextUrl.searchParams.get("limit") ?? "20")));
   const page = Math.max(1, Number(request.nextUrl.searchParams.get("page") ?? "1"));
+  const debug = request.nextUrl.searchParams.get("debug") === "true";
   const fresh = request.nextUrl.searchParams.get("fresh");
   const timeRange = normalizeTimeRange(request.nextUrl.searchParams.get("timeRange"));
+  if (debug) {
+    const diagnostics = await debugNewsApiQuery({
+      query: query || "business",
+      limit,
+      page,
+      timeRange,
+    });
+    return NextResponse.json(diagnostics);
+  }
   const bust = fresh === "true" || fresh === "1" || Boolean(request.nextUrl.searchParams.get("bust"));
   const edition = request.nextUrl.searchParams.get("edition")?.trim() || `business-news-feed-${localDateKey()}`;
   const queryKey = query || "broad-business-finance";
@@ -169,7 +181,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(cached.payload);
   }
 
-  const providerResponse = await fetchProviderNews(query, limit, page);
+  const providerResponse = await fetchProviderNews(query, limit, page, timeRange);
   const payload = providerResponse
     ? (() => {
         const mapped = providerArticlesToBriefs({
@@ -200,6 +212,7 @@ export async function GET(request: NextRequest) {
           articles: pagedArticles,
           normalized: pagedArticles,
           briefs: pagedBriefs,
+          errorMessage: providerResponse.errorMessage,
         } satisfies CachedPayload;
       })()
     : toMockPayload(query, page, limit);
