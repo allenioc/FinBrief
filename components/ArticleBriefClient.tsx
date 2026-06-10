@@ -25,6 +25,10 @@ export function ArticleBriefClient({
   const [resolved, setResolved] = useState<boolean>(Boolean(initialArticle));
 
   useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [id]);
+
+  useEffect(() => {
     if (article) return;
     let cancelled = false;
 
