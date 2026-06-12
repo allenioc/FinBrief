@@ -15,7 +15,7 @@ export function DataSnapshotPanel({ snapshot }: { snapshot: Snapshot }) {
   return (
     <aside className="fin-panel">
       <h2 className="fin-section-title mb-1">Data snapshot</h2>
-      <p className="mb-4 text-xs text-fin-subtle">Mock market data for educational context.</p>
+      <p className="mb-4 text-xs text-fin-subtle">Reference context for this story.</p>
       <dl>
         {snapshot.kind === "stock" && (
           <>

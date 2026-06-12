@@ -5,7 +5,6 @@ import Link from "next/link";
 import type { Brief } from "@/lib/types";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleDetail } from "./ArticleDetail";
-import { BriefFeedBar } from "./BriefFeedBar";
 
 /**
  * Resolves the clicked article in the browser. Server caches on Vercel are
@@ -112,7 +111,6 @@ export function ArticleBriefClient({
         ← Back
       </Link>
       <div className="mt-6">
-        <BriefFeedBar />
         <ArticleDetail article={article} />
       </div>
     </div>

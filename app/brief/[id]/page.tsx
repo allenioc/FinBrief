@@ -1,6 +1,5 @@
 import { ArticleBriefClient } from "@/components/ArticleBriefClient";
 import { Disclaimer } from "@/components/Disclaimer";
-import { UpdateScheduleFooter } from "@/components/UpdateScheduleFooter";
 import { findArticleLocally } from "@/lib/article-lookup";
 
 interface BriefPageProps {
@@ -9,9 +8,6 @@ interface BriefPageProps {
 
 export default async function BriefPage({ params }: BriefPageProps) {
   const { id } = await params;
-  // Best-effort server lookup (article index + mock data). When this misses —
-  // e.g. a different serverless instance — the client resolves the article
-  // from sessionStorage or the API.
   const article = await findArticleLocally(id);
 
   return (
@@ -20,7 +16,6 @@ export default async function BriefPage({ params }: BriefPageProps) {
       <div className="mt-10">
         <Disclaimer />
       </div>
-      <UpdateScheduleFooter />
     </div>
   );
 }

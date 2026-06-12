@@ -1,7 +1,6 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Disclaimer } from "@/components/Disclaimer";
 import { PublisherNote } from "@/components/PublisherNote";
-import { UpdateScheduleFooter } from "@/components/UpdateScheduleFooter";
 import { WatchlistClient } from "@/components/WatchlistClient";
 
 export default function WatchlistPage() {
@@ -10,7 +9,7 @@ export default function WatchlistPage() {
       <PageHeader
         eyebrow="Topics"
         title="Watchlist"
-        description="Save stocks and macro topics, then open each one to view a live filtered feed from /api/news."
+        description="Save stocks, ETFs, and macro topics you follow. Open any item to see stories from the daily edition filtered to that topic."
       />
 
       <WatchlistClient />
@@ -19,8 +18,6 @@ export default function WatchlistPage() {
         <PublisherNote />
         <Disclaimer />
       </div>
-
-      <UpdateScheduleFooter />
     </div>
   );
 }

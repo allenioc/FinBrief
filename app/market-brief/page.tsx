@@ -1,7 +1,6 @@
 import { PageHeader } from "@/components/PageHeader";
 import { Disclaimer } from "@/components/Disclaimer";
 import { MarketBriefClient } from "@/components/MarketBriefClient";
-import { UpdateScheduleFooter } from "@/components/UpdateScheduleFooter";
 import { getBriefs } from "@/lib/briefs";
 import { MARKET_BRIEF } from "@/lib/market-brief-data";
 import { buildMarketBriefFromBriefs } from "@/lib/market-brief-live";
@@ -23,8 +22,6 @@ export default async function MarketBriefPage() {
       <div className="mt-10">
         <Disclaimer />
       </div>
-
-      <UpdateScheduleFooter />
     </div>
   );
 }

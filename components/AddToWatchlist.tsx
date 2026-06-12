@@ -42,7 +42,7 @@ export function AddToWatchlist() {
     <section className="fin-panel">
       <h2 className="fin-section-title">Add to watchlist</h2>
       <p className="mt-2 text-sm text-fin-subtle">
-        Search a ticker, ETF, sector, or macro topic. Mock flow — not persisted.
+        Search a ticker, ETF, sector, or macro topic to follow on your watchlist.
       </p>
 
       <form onSubmit={onSubmit} className="mt-5 flex flex-col gap-3 sm:flex-row">

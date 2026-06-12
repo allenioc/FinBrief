@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { RecommendedTopics } from "@/components/RecommendedTopics";
 import { PublisherNote } from "@/components/PublisherNote";
 import { Disclaimer } from "@/components/Disclaimer";
-import { UpdateScheduleFooter } from "@/components/UpdateScheduleFooter";
+import { NewsletterWaitlist } from "@/components/NewsletterWaitlist";
 import { SearchBar } from "@/components/SearchBar";
 import { WatchlistHighlights } from "@/components/WatchlistHighlights";
 import { getBriefs } from "@/lib/briefs";
@@ -65,6 +65,10 @@ export default async function HomePage({ searchParams }: HomeProps) {
         <DashboardFeed initialBriefs={initialBriefs} query={query} />
       </section>
 
+      <section className="mb-12">
+        <NewsletterWaitlist />
+      </section>
+
       <section className="mb-10">
         <div className="mb-5 flex items-center justify-between">
           <h2 className="fin-section-title">Watchlist highlights</h2>
@@ -79,8 +83,6 @@ export default async function HomePage({ searchParams }: HomeProps) {
         <PublisherNote />
         <Disclaimer />
       </div>
-
-      <UpdateScheduleFooter />
     </div>
   );
 }

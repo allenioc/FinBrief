@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { Sidebar } from "./Sidebar";
+import { SiteFooter } from "./SiteFooter";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -53,6 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </span>
         </div>
         {children}
+        <SiteFooter />
       </div>
     </div>
   );

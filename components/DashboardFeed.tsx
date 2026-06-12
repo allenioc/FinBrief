@@ -6,6 +6,7 @@ import {
   getInitialArticleFeedMeta,
 } from "@/lib/mock-refresh";
 import { formatLastUpdated } from "@/lib/date-format";
+import { friendlyEditionError } from "@/lib/user-messages";
 import { BROAD_NEWS_QUERY } from "@/lib/news-constants";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleCard } from "./ArticleCard";
@@ -78,7 +79,7 @@ export function DashboardFeed({
           provider?: string;
           errorMessage?: string;
         };
-        setApiError(payload.errorMessage ?? null);
+        setApiError(friendlyEditionError(payload.errorMessage) ?? null);
         const apiBriefs = payload.briefs ?? [];
         const provider = payload.provider ?? "mock";
         const nextBriefs =
@@ -97,10 +98,10 @@ export function DashboardFeed({
         setHasMore(Boolean(payload.hasMore));
         setHasLoadedApi(true);
       } else {
-        setApiError("Live provider request failed. Please retry later.");
+        setApiError("We couldn't load today's edition right now. Please check back later.");
       }
     } catch {
-      setApiError("Live provider request failed. Please retry later.");
+      setApiError("We couldn't load today's edition right now. Please check back later.");
     } finally {
       isRefreshingRef.current = false;
     }
@@ -146,7 +147,7 @@ export function DashboardFeed({
         hasMore?: boolean;
         errorMessage?: string;
       };
-      setApiError(payload.errorMessage ?? null);
+      setApiError(friendlyEditionError(payload.errorMessage) ?? null);
       setBriefs((prev) => {
         const existing = new Set(prev.map((item) => item.id));
         const additions = payload.briefs.filter((item) => !existing.has(item.id));
@@ -245,9 +246,13 @@ export function DashboardFeed({
           Loading stories...
         </p>
       ) : displayed.length === 0 ? (
-        <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
-          No fresh stories found. The daily edition updates once per day — check back later.
-        </p>
+        <div className="fin-panel py-12 text-center">
+          <p className="text-sm font-medium text-fin-navy">No stories in this edition yet</p>
+          <p className="mt-2 text-sm text-fin-subtle">
+            The daily edition updates once per day. Check back after the next update, or try a
+            different topic from the sidebar.
+          </p>
+        </div>
       ) : (
         <div className="space-y-10">
           {groupedSections.map((section) =>

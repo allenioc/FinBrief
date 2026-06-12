@@ -9,6 +9,11 @@ export const PAGE_TITLES: Record<string, string> = {
   "/": "Dashboard",
   "/market-brief": "Market Brief",
   "/watchlist": "Watchlist",
+  "/about": "About",
+  "/sources": "Sources",
+  "/privacy": "Privacy",
+  "/terms": "Terms",
+  "/contact": "Contact",
 };
 
 export function pageTitle(pathname: string): string {
@@ -34,7 +39,8 @@ export const SIDEBAR_NAV: NavSection[] = [
       { label: "Dashboard", href: "/" },
       { label: "Market Brief", href: "/market-brief" },
       { label: "Watchlist", href: "/watchlist" },
-      { label: "Sources", href: "/market-brief" },
+      { label: "Sources", href: "/sources" },
+      { label: "About", href: "/about" },
     ],
   },
   {

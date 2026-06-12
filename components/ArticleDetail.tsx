@@ -160,6 +160,24 @@ export function ArticleDetail({ article }: { article: Brief }) {
           <Section title="Why it matters">{article.whyItMatters}</Section>
           <Section title="Who is affected?">{article.whoIsAffected}</Section>
 
+          {article.originalUrl && (
+            <section className="fin-panel border-l-4 border-l-fin-brand">
+              <h2 className="mb-2 text-lg font-bold text-fin-navy">Read the full story</h2>
+              <p className="text-sm text-fin-subtle">
+                FinBrief summarizes publicly available reporting from {article.source}. The complete
+                article, including quotes and charts, is on the publisher&apos;s site.
+              </p>
+              <a
+                href={article.originalUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="fin-btn-primary mt-4 inline-flex"
+              >
+                Read full article at source ↗
+              </a>
+            </section>
+          )}
+
           <div className="space-y-4">
             <h2 className="fin-section-title">Analysis</h2>
             <Section title="Bullish interpretation" variant="bull">
@@ -220,9 +238,15 @@ export function ArticleDetail({ article }: { article: Brief }) {
               <div>
                 <dt className="fin-label">Original article</dt>
                 <dd className="mt-1">
-                  <a href={article.originalUrl} target="_blank" rel="noopener noreferrer" className="fin-link break-all">
-                    {article.originalUrl}
+                  <a
+                    href={article.originalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="fin-btn-primary mt-2 inline-flex text-sm"
+                  >
+                    Read full article at source ↗
                   </a>
+                  <p className="mt-3 break-all text-xs text-fin-subtle">{article.originalUrl}</p>
                 </dd>
               </div>
             </dl>
