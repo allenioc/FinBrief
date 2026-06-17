@@ -267,7 +267,14 @@ export function DashboardFeed({
                     <ArticleCard
                       key={`${brief.id}-${toTopicSlug(section.title)}`}
                       article={brief}
-                      variant={index === 0 && section.title === "Top Stories" ? "hero" : "standard"}
+                      variant={
+                        section.title === "Top Stories" && index === 0
+                          ? "hero"
+                          : section.title === "Top Stories"
+                            ? "standard"
+                            : "compact"
+                      }
+                      priorityImage={section.title === "Top Stories" && index === 0}
                     />
                   ))}
                 </div>

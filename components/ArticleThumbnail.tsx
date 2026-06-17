@@ -1,7 +1,11 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  isDisplayableRemoteImage,
+  isOptimizableRemoteImage,
+} from "@/lib/image-remote-hosts";
 import type { ArticleType } from "@/lib/types";
 
 interface ArticleThumbnailProps {
@@ -19,39 +23,6 @@ interface ArticleThumbnailProps {
 type LoadState = "loading" | "loaded" | "fallback";
 
 const FALLBACK_TIMEOUT_MS = 2800;
-const SAFE_EXTERNAL_IMAGE_HOSTS = new Set([
-  "s.yimg.com",
-  "media.zenfs.com",
-  "image.cnbcfm.com",
-  "images.wsj.net",
-  "images.barrons.com",
-  "images.marketwatch.com",
-  "static.seekingalpha.com",
-  "www.reuters.com",
-  "images.reuters.com",
-  "www.bloomberg.com",
-  "assets.bwbx.io",
-  "images.unsplash.com",
-]);
-const SAFE_EXTERNAL_IMAGE_HOST_SUFFIXES = [
-  ".yimg.com",
-  ".reuters.com",
-  ".bloomberg.com",
-];
-
-function isSafeRemoteImageSource(value: string): boolean {
-  if (!value) return false;
-  if (value.startsWith("/")) return true;
-  try {
-    const parsed = new URL(value);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
-    const hostname = parsed.hostname.toLowerCase();
-    if (SAFE_EXTERNAL_IMAGE_HOSTS.has(hostname)) return true;
-    return SAFE_EXTERNAL_IMAGE_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix));
-  } catch {
-    return false;
-  }
-}
 
 function gradientClass(kind?: ArticleType): string {
   if (kind === "macro news" || kind === "market news") {
@@ -64,6 +35,38 @@ function gradientClass(kind?: ArticleType): string {
     return "bg-gradient-to-br from-emerald-100 via-cyan-50 to-blue-100";
   }
   return "bg-gradient-to-br from-fin-brand-soft via-fin-muted to-fin-bg";
+}
+
+function FallbackVisual({
+  alt,
+  fallbackLabel,
+  fallbackSub,
+  fallbackTitle,
+  gradient,
+}: {
+  alt: string;
+  fallbackLabel: string;
+  fallbackSub?: string;
+  fallbackTitle?: string;
+  gradient: string;
+}) {
+  return (
+    <div
+      className={`absolute inset-0 flex flex-col items-center justify-center px-6 text-center ${gradient}`}
+      role="img"
+      aria-label={alt}
+    >
+      <span className="font-mono text-sm font-bold uppercase tracking-wider text-fin-brand">
+        {fallbackLabel}
+      </span>
+      {fallbackSub && <span className="mt-2 max-w-xs text-xs text-fin-subtle">{fallbackSub}</span>}
+      {fallbackTitle && (
+        <span className="mt-3 line-clamp-2 max-w-xs text-sm font-medium text-fin-navy">
+          {fallbackTitle}
+        </span>
+      )}
+    </div>
+  );
 }
 
 export function ArticleThumbnail({
@@ -80,82 +83,109 @@ export function ArticleThumbnail({
   const [state, setState] = useState<LoadState>("loading");
   const timerRef = useRef<number | null>(null);
   const hasSetFallback = useRef(false);
-  const isMissingSource = !src || !src.trim();
-  const isSafeSource = isSafeRemoteImageSource(src.trim());
+  const trimmedSrc = src?.trim() ?? "";
+  const canDisplay = isDisplayableRemoteImage(trimmedSrc);
+  const useNextImage = canDisplay && isOptimizableRemoteImage(trimmedSrc);
   const stableGradient = useMemo(() => gradientClass(fallbackKind), [fallbackKind]);
+  const loadingClass = `${className} transition-opacity duration-300 ${
+    state === "loaded" ? "opacity-100" : "opacity-0"
+  }`;
 
-  useEffect(() => {
-    hasSetFallback.current = false;
-    setState(isMissingSource || !isSafeSource ? "fallback" : "loading");
+  const showFallback = useCallback(() => {
+    if (hasSetFallback.current) return;
+    hasSetFallback.current = true;
+    setState("fallback");
+  }, []);
+
+  const markLoaded = useCallback(() => {
     if (timerRef.current) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    if (!isMissingSource && isSafeSource) {
-      timerRef.current = window.setTimeout(() => {
-        hasSetFallback.current = true;
-        setState("fallback");
-      }, FALLBACK_TIMEOUT_MS);
+    if (!hasSetFallback.current) {
+      setState("loaded");
     }
+  }, []);
+
+  const handleImageLoad = useCallback(
+    (naturalWidth: number, naturalHeight: number) => {
+      if (!naturalWidth || !naturalHeight) {
+        showFallback();
+        return;
+      }
+      markLoaded();
+    },
+    [markLoaded, showFallback]
+  );
+
+  useEffect(() => {
+    hasSetFallback.current = false;
+    if (!canDisplay) {
+      setState("fallback");
+      return;
+    }
+    setState("loading");
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    timerRef.current = window.setTimeout(showFallback, FALLBACK_TIMEOUT_MS);
     return () => {
       if (timerRef.current) {
         window.clearTimeout(timerRef.current);
         timerRef.current = null;
       }
     };
-  }, [src, isMissingSource, isSafeSource]);
+  }, [canDisplay, showFallback, trimmedSrc]);
 
   if (state === "fallback") {
     return (
-      <div
-        className={`absolute inset-0 flex flex-col items-center justify-center px-6 text-center ${stableGradient}`}
-        role="img"
-        aria-label={alt}
-      >
-        <span className="font-mono text-sm font-bold uppercase tracking-wider text-fin-brand">
-          {fallbackLabel}
-        </span>
-        {fallbackSub && (
-          <span className="mt-2 max-w-xs text-xs text-fin-subtle">{fallbackSub}</span>
-        )}
-        {fallbackTitle && <span className="mt-3 line-clamp-2 max-w-xs text-sm font-medium text-fin-navy">{fallbackTitle}</span>}
-      </div>
+      <FallbackVisual
+        alt={alt}
+        fallbackLabel={fallbackLabel}
+        fallbackSub={fallbackSub}
+        fallbackTitle={fallbackTitle}
+        gradient={stableGradient}
+      />
+    );
+  }
+
+  if (useNextImage) {
+    return (
+      <>
+        <Image
+          src={trimmedSrc}
+          alt={alt}
+          fill
+          className={loadingClass}
+          sizes={sizes}
+          priority={priority}
+          onError={showFallback}
+          onLoad={(event) => {
+            const img = event.currentTarget;
+            handleImageLoad(img.naturalWidth, img.naturalHeight);
+          }}
+        />
+        {state === "loading" && <div className={`absolute inset-0 ${stableGradient}`} aria-hidden />}
+      </>
     );
   }
 
   return (
     <>
-      <Image
-        src={src}
+      <img
+        src={trimmedSrc}
         alt={alt}
-        fill
-        className={`${className} transition-opacity duration-300 ${state === "loaded" ? "opacity-100" : "opacity-0"}`}
+        loading={priority ? "eager" : "lazy"}
+        decoding="async"
+        className={`absolute inset-0 h-full w-full ${loadingClass}`}
         sizes={sizes}
-        priority={priority}
-        onError={() => {
-          if (hasSetFallback.current) return;
-          hasSetFallback.current = true;
-          setState("fallback");
-        }}
+        onError={showFallback}
         onLoad={(event) => {
-          const img = event.currentTarget as HTMLImageElement;
-          if (!img.naturalWidth || !img.naturalHeight) {
-            hasSetFallback.current = true;
-            setState("fallback");
-            return;
-          }
-          if (timerRef.current) {
-            window.clearTimeout(timerRef.current);
-            timerRef.current = null;
-          }
-          if (!hasSetFallback.current) {
-            setState("loaded");
-          }
+          handleImageLoad(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight);
         }}
       />
-      {state === "loading" && (
-        <div className={`absolute inset-0 ${stableGradient}`} aria-hidden />
-      )}
+      {state === "loading" && <div className={`absolute inset-0 ${stableGradient}`} aria-hidden />}
     </>
   );
 }

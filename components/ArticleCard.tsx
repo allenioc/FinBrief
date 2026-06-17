@@ -18,13 +18,23 @@ import { TooltipLabel } from "./Tooltip";
 export function ArticleCard({
   article,
   variant = "standard",
+  priorityImage = false,
 }: {
   article: Brief;
   variant?: "hero" | "standard" | "compact";
+  priorityImage?: boolean;
 }) {
   const fallbackLabel = article.ticker !== "—" ? article.ticker : article.topic;
   const isHero = variant === "hero";
+  const isCompact = variant === "compact";
   const watchlistItem = watchlistItemFromBrief(article);
+  const imageAspect = isHero ? "aspect-[2/1]" : isCompact ? "aspect-[3/2]" : "aspect-[16/10]";
+  const imageInset = isHero ? "inset-2 sm:inset-3" : isCompact ? "inset-2" : "inset-2 sm:inset-3";
+  const imageSizes = isHero
+    ? "(max-width: 768px) 100vw, 66vw"
+    : isCompact
+      ? "(max-width: 768px) 50vw, 240px"
+      : "(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw";
 
   // Stash the full article so /brief/[id] can render it instantly without
   // depending on server-side caches (which are per-instance on Vercel).
@@ -45,29 +55,28 @@ export function ArticleCard({
       <Link
         href={`/brief/${article.id}`}
         onClick={stashArticle}
-        className={`relative block overflow-hidden bg-fin-muted ${
-          isHero ? "aspect-[16/10]" : "aspect-[16/10]"
-        }`}
+        className={`relative block overflow-hidden bg-fin-muted ${imageAspect}`}
       >
-        <div className="absolute inset-2 overflow-hidden rounded-image sm:inset-3">
+        <div className={`absolute ${imageInset} overflow-hidden rounded-image`}>
           <ArticleThumbnail
             src={article.imageUrl}
-            alt={article.imageAlt}
+            alt={article.imageAlt || article.headline}
             fallbackLabel={fallbackLabel}
             fallbackSub={article.source}
             fallbackTitle={article.headline}
             fallbackKind={article.articleType}
-            sizes={
-              isHero
-                ? "(max-width: 768px) 100vw, 66vw"
-                : "(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            }
+            priority={priorityImage}
+            sizes={imageSizes}
             className="rounded-image object-cover transition-transform duration-500 group-hover:scale-[1.03]"
           />
         </div>
       </Link>
 
-      <div className={`flex flex-1 flex-col ${isHero ? "gap-5 p-6 sm:p-7" : "gap-4 p-5 sm:p-6"}`}>
+      <div
+        className={`flex flex-1 flex-col ${
+          isHero ? "gap-5 p-6 sm:p-7" : isCompact ? "gap-3 p-4 sm:p-5" : "gap-4 p-5 sm:p-6"
+        }`}
+      >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <ArticleTypeBadge type={article.articleType} />

@@ -64,7 +64,8 @@ export function TopicHub({
                   <ArticleCard
                     key={story.id}
                     article={story}
-                    variant={i === 0 ? "hero" : "standard"}
+                    variant={i === 0 ? "hero" : "compact"}
+                    priorityImage={i === 0}
                   />
                 ))}
               </div>

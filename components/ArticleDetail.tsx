@@ -58,7 +58,7 @@ export function ArticleDetail({ article }: { article: Brief }) {
           <div className="absolute inset-4 overflow-hidden rounded-image sm:inset-6">
             <ArticleThumbnail
               src={article.imageUrl}
-              alt={article.imageAlt}
+              alt={article.imageAlt || article.headline}
               fallbackLabel={fallbackLabel}
               fallbackSub={`${article.source} · ${article.topic}`}
               priority

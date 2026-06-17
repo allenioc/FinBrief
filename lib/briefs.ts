@@ -102,18 +102,14 @@ export async function fetchBriefsFromApi(query: string): Promise<BriefResponse |
 }
 
 function isEnrichedBrief(brief: Brief): boolean {
-  return Boolean(
-    brief.imageUrl &&
-      brief.imageAlt &&
-      brief.thirtySecondVersion &&
-      brief.recommendedNext?.length
-  );
+  return Boolean(brief.thirtySecondVersion && brief.recommendedNext?.length && brief.headline);
 }
 
 export async function getBriefs(query: string): Promise<Brief[]> {
   const api = await fetchBriefsFromApi(query);
   if (api) {
-    const briefs = api.briefs.filter(isEnrichedBrief);
+    const enriched = api.briefs.filter(isEnrichedBrief);
+    const briefs = enriched.length > 0 ? enriched : api.briefs;
     if (briefs.length > 0) {
       cacheBriefs(briefs);
     }

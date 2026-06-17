@@ -1,4 +1,3 @@
-import { ARTICLE_IMAGES } from "./article-images";
 import {
   buildBullCase,
   buildBearCase,
@@ -48,14 +47,6 @@ export interface NormalizedNewsArticle {
 
 function inferTopic(query: string, headline: string, articleType: NormalizedNewsArticle["articleType"]): string {
   return inferDisplayTopic(query, headline, articleType);
-}
-
-function fallbackImageForType(type: NormalizedNewsArticle["articleType"]): string {
-  if (type === "company") return ARTICLE_IMAGES.aapl.url;
-  if (type === "macro") return ARTICLE_IMAGES.fed.url;
-  if (type === "etf") return ARTICLE_IMAGES.aiChips.url;
-  if (type === "sector") return ARTICLE_IMAGES.techSector.url;
-  return ARTICLE_IMAGES.market.url;
 }
 
 function mapArticleType(type: NormalizedNewsArticle["articleType"]): Brief["articleType"] {
@@ -185,8 +176,10 @@ export function normalizedToBrief(article: NormalizedNewsArticle): Brief {
     source: article.source,
     author: article.author,
     publishedAt: article.publishedAt,
-    imageUrl: article.imageUrl ?? fallbackImageForType(article.articleType),
-    imageAlt: `${article.relatedTickerOrTopic} market-related article image`,
+    imageUrl: article.imageUrl ?? "",
+    imageAlt: article.headline
+      ? `${article.headline} thumbnail`
+      : `${article.relatedTickerOrTopic} market-related article image`,
     originalUrl: article.originalUrl,
     excerpt: article.excerpt,
     summary: article.finbriefSummary,
