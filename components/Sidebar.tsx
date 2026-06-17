@@ -13,7 +13,13 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === base || pathname.startsWith(`${base}/`);
 }
 
-export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+export function Sidebar({
+  onNavigate,
+  onClose,
+}: {
+  onNavigate?: () => void;
+  onClose?: () => void;
+}) {
   const pathname = usePathname();
   const { items } = useWatchlist();
   const followingItems = items.slice(0, 8).map((item) => ({
@@ -33,8 +39,20 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   );
 
   return (
-    <aside className="flex h-full w-[260px] shrink-0 flex-col border-r border-fin-border bg-fin-sidebar">
-      <div className="border-b border-fin-border px-5 py-5">
+    <aside className="flex h-full w-full shrink-0 flex-col border-r border-fin-border bg-fin-sidebar shadow-float lg:w-[260px]">
+      <div className="relative border-b border-fin-border px-5 py-5 pr-14">
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-3 top-3 rounded-xl border border-fin-border bg-fin-surface p-2 text-fin-navy shadow-sm transition-colors hover:bg-fin-muted"
+            aria-label="Close navigation menu"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
         <Link href="/" className="flex items-center gap-3" onClick={onNavigate}>
           <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl border border-fin-border bg-fin-surface shadow-sm">
             <Image

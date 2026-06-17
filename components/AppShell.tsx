@@ -1,12 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { Sidebar } from "./Sidebar";
 import { SiteFooter } from "./SiteFooter";
 
+const DRAWER_TRANSITION_MS = 300;
+
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileNavVisible, setMobileNavVisible] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const openMobileNav = useCallback(() => {
+    setMobileNavVisible(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setMobileNavOpen(true));
+    });
+  }, []);
+
+  const closeMobileNav = useCallback(() => {
+    setMobileNavOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!mobileNavOpen && mobileNavVisible) {
+      const timeout = window.setTimeout(() => setMobileNavVisible(false), DRAWER_TRANSITION_MS);
+      return () => window.clearTimeout(timeout);
+    }
+  }, [mobileNavOpen, mobileNavVisible]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileNavOpen]);
+
+  useEffect(() => {
+    if (!mobileNavVisible) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMobileNav();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [closeMobileNav, mobileNavVisible]);
 
   return (
     <div className="flex min-h-screen bg-fin-bg">
@@ -14,16 +53,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Sidebar />
       </div>
 
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+      {mobileNavVisible && (
+        <div
+          className="fixed inset-0 z-50 lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation menu"
+        >
           <button
             type="button"
-            className="absolute inset-0 bg-fin-navy/40"
+            className={`absolute inset-0 bg-fin-navy/40 transition-opacity duration-300 ease-out ${
+              mobileNavOpen ? "opacity-100" : "opacity-0"
+            }`}
             aria-label="Close menu"
-            onClick={() => setMobileOpen(false)}
+            onClick={closeMobileNav}
           />
-          <div className="relative h-full w-[260px] shadow-float">
-            <Sidebar onNavigate={() => setMobileOpen(false)} />
+          <div
+            className={`absolute inset-y-0 left-0 flex h-[100dvh] w-[min(280px,88vw)] max-w-[280px] transition-transform duration-300 ease-out ${
+              mobileNavOpen ? "translate-x-0" : "-translate-x-full"
+            }`}
+            style={{
+              paddingTop: "env(safe-area-inset-top)",
+              paddingBottom: "env(safe-area-inset-bottom)",
+            }}
+          >
+            <Sidebar onNavigate={closeMobileNav} onClose={closeMobileNav} />
           </div>
         </div>
       )}
@@ -32,11 +86,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex h-14 items-center gap-3 border-b border-fin-border bg-fin-surface px-4 lg:hidden">
           <button
             type="button"
-            onClick={() => setMobileOpen(true)}
+            onClick={openMobileNav}
             className="rounded-xl border border-fin-border p-2 text-fin-navy"
             aria-label="Open navigation menu"
+            aria-expanded={mobileNavOpen}
           >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
