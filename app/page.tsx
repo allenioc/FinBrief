@@ -24,7 +24,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
   const title = isTopicView ? `${query} news feed` : "Understand markets with clarity";
   const description = isTopicView
     ? `Showing latest stories for ${query} from the current daily edition.`
-    : "Search any stock, ETF, index, or macro topic. FinBrief delivers structured, educational summaries with sentiment, impact, and source context.";
+    : undefined;
 
   return (
     <div className="mx-auto max-w-shell px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
