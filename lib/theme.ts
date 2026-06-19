@@ -39,7 +39,6 @@ export const SIDEBAR_NAV: NavSection[] = [
       { label: "Dashboard", href: "/" },
       { label: "Market Brief", href: "/market-brief" },
       { label: "Watchlist", href: "/watchlist" },
-      { label: "Sources", href: "/sources" },
       { label: "About", href: "/about" },
     ],
   },

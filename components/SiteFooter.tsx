@@ -3,7 +3,7 @@ import { BRAND } from "@/lib/theme";
 
 const FOOTER_LINKS = [
   { label: "About", href: "/about" },
-  { label: "Sources", href: "/sources" },
+  { label: "Sources", href: "/about#sources-and-attribution" },
   { label: "Privacy", href: "/privacy" },
   { label: "Terms", href: "/terms" },
   { label: "Contact", href: "/contact" },

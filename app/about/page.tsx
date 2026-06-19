@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { BRAND } from "@/lib/theme";
 
@@ -35,6 +36,52 @@ export default function AboutPage() {
             FinBrief is for learning and context only. We do not provide investment advice,
             personalized recommendations, or trading signals. Always read the full article at the
             source before making financial decisions.
+          </p>
+        </section>
+
+        <section id="sources-and-attribution" className="scroll-mt-8 space-y-4 pt-2">
+          <div>
+            <h2 className="text-lg font-bold text-fin-navy">Sources & attribution</h2>
+            <p className="mt-3 text-sm text-fin-subtle">
+              FinBrief summarizes publicly available reporting. Full articles always remain with the
+              original publishers.
+            </p>
+          </div>
+
+          <section className="fin-panel space-y-3">
+            <h2 className="text-lg font-bold text-fin-navy">Original publishers</h2>
+            <p>
+              Every FinBrief story links to its source article. Headlines, excerpts, and metadata come
+              from recognized news publishers and wire services. FinBrief does not republish full
+              articles — we explain and contextualize, then send you to the publisher for the complete
+              report.
+            </p>
+          </section>
+
+          <section className="fin-panel space-y-3">
+            <h2 className="text-lg font-bold text-fin-navy">Attribution</h2>
+            <p>
+              Each Article Brief shows the publisher name, publication date, and a direct link labeled
+              &ldquo;Read full article at source.&rdquo; When you open a story, use that link for
+              quotes, charts, and full reporting.
+            </p>
+          </section>
+
+          <section className="fin-panel space-y-3">
+            <h2 className="text-lg font-bold text-fin-navy">Corrections & updates</h2>
+            <p>
+              Publishers may update or correct their stories after publication. FinBrief&apos;s daily
+              edition reflects the preview available when the edition was prepared. For the latest
+              version, always refer to the source link.
+            </p>
+          </section>
+
+          <p className="text-sm text-fin-subtle">
+            Questions about sourcing?{" "}
+            <Link href="/contact" className="fin-link">
+              Contact us
+            </Link>
+            .
           </p>
         </section>
       </div>
