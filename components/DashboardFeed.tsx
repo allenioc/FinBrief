@@ -1,19 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Brief } from "@/lib/types";
 import {
   getInitialArticleFeedMeta,
 } from "@/lib/mock-refresh";
 import { formatLastUpdated } from "@/lib/date-format";
 import { friendlyEditionError } from "@/lib/user-messages";
-import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
+import { DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
 import { enrichBriefImage } from "@/lib/article-image";
 import { buildDashboardSections } from "@/lib/dashboard-sections";
+import { filterBriefsForTopic } from "@/lib/topic-stories";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleCard } from "./ArticleCard";
-
-const DEFAULT_NEWS_QUERY = BROAD_NEWS_QUERY;
 
 function msUntilNextLocalMidnight(): number {
   const now = new Date();
@@ -40,16 +39,21 @@ export function DashboardFeed({
     savedEditionArticleCount: number;
     articlesWithImageUrl: number;
   } | null>(null);
-  const briefsRef = useRef<Brief[]>(initialBriefs);
+  const editionRef = useRef<Brief[]>(initialBriefs.map(enrichBriefImage));
   const isRefreshingRef = useRef(false);
-  const activeQuery = query.trim() || DEFAULT_NEWS_QUERY;
-  const isDefaultFeed = activeQuery === DEFAULT_NEWS_QUERY;
+  const topicQuery = query.trim();
+  const isTopicView = topicQuery.length > 0;
 
-  const [briefs, setBriefs] = useState<Brief[]>(() => initialBriefs.map(enrichBriefImage));
+  const [editionBriefs, setEditionBriefs] = useState<Brief[]>(() => initialBriefs.map(enrichBriefImage));
 
   useEffect(() => {
-    briefsRef.current = briefs;
-  }, [briefs]);
+    editionRef.current = editionBriefs;
+  }, [editionBriefs]);
+
+  const topicStories = useMemo(
+    () => (isTopicView ? filterBriefsForTopic(editionBriefs, topicQuery) : []),
+    [editionBriefs, isTopicView, topicQuery]
+  );
 
   function idsSignature(items: Brief[]): string {
     return items.map((item) => item.id).join("|");
@@ -68,7 +72,6 @@ export function DashboardFeed({
     isRefreshingRef.current = true;
 
     const params = new URLSearchParams();
-    if (!isDefaultFeed) params.set("q", activeQuery);
     params.set("timeRange", "week");
     params.set("limit", String(DAILY_EDITION_ARTICLE_LIMIT));
     params.set("page", "1");
@@ -92,12 +95,14 @@ export function DashboardFeed({
         });
         const apiBriefs = (payload.briefs ?? []).map(enrichBriefImage);
         const provider = payload.provider ?? "mock";
-        const nextBriefs =
-          provider === "mock" && apiBriefs.length === 0 ? initialBriefs : apiBriefs;
-        const prevSig = idsSignature(briefsRef.current);
-        const nextSig = idsSignature(nextBriefs);
+        const nextEdition =
+          provider === "mock" && apiBriefs.length === 0
+            ? initialBriefs.map(enrichBriefImage)
+            : apiBriefs;
+        const prevSig = idsSignature(editionRef.current);
+        const nextSig = idsSignature(nextEdition);
         if (prevSig !== nextSig) {
-          setBriefs(nextBriefs);
+          setEditionBriefs(nextEdition);
         }
         setMeta((prev) => ({
           refreshCount: prev.refreshCount + 1,
@@ -115,29 +120,29 @@ export function DashboardFeed({
     } finally {
       isRefreshingRef.current = false;
     }
-  }, [activeQuery, initialBriefs, isDefaultFeed]);
+  }, [initialBriefs]);
 
   useEffect(() => {
     refreshFeed();
-    // Intentionally tied to query/default feed changes only.
-    // We avoid refetching on tab switches to reduce provider churn/rate limits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeQuery, isDefaultFeed]);
+  }, []);
 
   useEffect(() => {
-    setBriefs(initialBriefs.map(enrichBriefImage));
-    briefsRef.current = initialBriefs.map(enrichBriefImage);
+    const enriched = initialBriefs.map(enrichBriefImage);
+    setEditionBriefs(enriched);
+    editionRef.current = enriched;
     setPage(1);
     setHasMore(false);
     setVisibleCount(12);
     setHasLoadedApi(initialBriefs.length > 0);
     setApiError(null);
     setApiLayoutDebug(null);
-  }, [activeQuery, initialBriefs]);
+  }, [initialBriefs]);
 
   const handleLoadMore = useCallback(async () => {
-    if (visibleCount < briefs.length) {
-      setVisibleCount((prev) => Math.min(briefs.length, prev + 6));
+    if (isTopicView) return;
+    if (visibleCount < editionBriefs.length) {
+      setVisibleCount((prev) => Math.min(editionBriefs.length, prev + 6));
       return;
     }
     if (!hasMore || isRefreshingRef.current) return;
@@ -145,7 +150,6 @@ export function DashboardFeed({
     setIsLoadingMore(true);
     const nextPage = page + 1;
     const params = new URLSearchParams();
-    if (!isDefaultFeed) params.set("q", activeQuery);
     params.set("timeRange", "week");
     params.set("limit", String(DAILY_EDITION_ARTICLE_LIMIT));
     params.set("page", String(nextPage));
@@ -159,9 +163,9 @@ export function DashboardFeed({
         errorMessage?: string;
       };
       setApiError(friendlyEditionError(payload.errorMessage) ?? null);
-      setBriefs((prev) => {
+      setEditionBriefs((prev) => {
         const existing = new Set(prev.map((item) => item.id));
-        const additions = payload.briefs.filter((item) => !existing.has(item.id));
+        const additions = payload.briefs.filter((item) => !existing.has(item.id)).map(enrichBriefImage);
         return [...prev, ...additions];
       });
       setVisibleCount((prev) => prev + 12);
@@ -170,10 +174,9 @@ export function DashboardFeed({
     } finally {
       setIsLoadingMore(false);
     }
-  }, [activeQuery, briefs.length, hasMore, isDefaultFeed, page, visibleCount]);
+  }, [editionBriefs.length, hasMore, isTopicView, page, visibleCount]);
 
   useEffect(() => {
-    if (!isDefaultFeed) return;
     let midnightTimer: number | undefined;
 
     const scheduleMidnightRefresh = () => {
@@ -187,10 +190,12 @@ export function DashboardFeed({
     return () => {
       if (midnightTimer) window.clearTimeout(midnightTimer);
     };
-  }, [isDefaultFeed, refreshFeed]);
+  }, [refreshFeed]);
 
-  const { sections: groupedSections, layoutDebug } = buildDashboardSections(briefs);
-  const hasVisibleStories = groupedSections.some((section) => section.stories.length > 0);
+  const { sections: groupedSections, layoutDebug } = buildDashboardSections(editionBriefs);
+  const hasVisibleStories = isTopicView
+    ? topicStories.length > 0
+    : groupedSections.some((section) => section.stories.length > 0);
   const editionArticleCount = apiLayoutDebug?.savedEditionArticleCount ?? layoutDebug.savedEditionArticleCount;
   const editionImageCount = apiLayoutDebug?.articlesWithImageUrl ?? layoutDebug.articlesWithImageUrl;
 
@@ -200,15 +205,21 @@ export function DashboardFeed({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-fin-subtle">
           <span className="font-semibold text-fin-navy">Daily edition</span>
           <span>{formatLastUpdated(meta.lastUpdatedAt)}</span>
-          <span>{briefs.length} stories</span>
-          <span
-            className="text-[11px] text-fin-subtle"
-            data-layout-debug
-            title="Dashboard layout debug"
-          >
-            Edition {editionArticleCount} saved · Top {layoutDebug.topStoriesCount} · imageUrl{" "}
-            {editionImageCount}
+          <span>
+            {isTopicView
+              ? `${topicStories.length} topic ${topicStories.length === 1 ? "story" : "stories"}`
+              : `${editionBriefs.length} stories`}
           </span>
+          {!isTopicView && (
+            <span
+              className="text-[11px] text-fin-subtle"
+              data-layout-debug
+              title="Dashboard layout debug"
+            >
+              Edition {editionArticleCount} saved · Top {layoutDebug.topStoriesCount} · imageUrl{" "}
+              {editionImageCount}
+            </span>
+          )}
         </div>
         <p className="text-xs text-fin-subtle">Daily edition updates once per day.</p>
       </div>
@@ -221,22 +232,55 @@ export function DashboardFeed({
 
       <div className="flex flex-wrap gap-2">
         <span className="rounded-full bg-fin-brand px-3 py-1.5 text-xs font-semibold text-white">
-          This week&apos;s edition
+          {isTopicView ? `${topicQuery} · today's edition` : "This week's edition"}
         </span>
+        {isTopicView && (
+          <span className="rounded-full bg-fin-muted px-3 py-1.5 text-xs font-medium text-fin-subtle">
+            Filtered from saved daily edition
+          </span>
+        )}
       </div>
 
       {!hasLoadedApi ? (
         <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
           Loading stories...
         </p>
+      ) : isTopicView && topicStories.length === 0 ? (
+        <div className="fin-panel py-12 text-center">
+          <p className="text-sm font-medium text-fin-navy">No stories for {topicQuery} in today&apos;s edition</p>
+          <p className="mt-2 text-sm text-fin-subtle">
+            This topic has no matching stories in the current daily edition. Check back after the next update or
+            browse another topic.
+          </p>
+        </div>
       ) : !hasVisibleStories ? (
         <div className="fin-panel py-12 text-center">
           <p className="text-sm font-medium text-fin-navy">No stories in this edition yet</p>
           <p className="mt-2 text-sm text-fin-subtle">
-            The daily edition updates once per day. Check back after the next update, or try a
-            different topic from the sidebar.
+            The daily edition updates once per day. Check back after the next update, or try a different topic from
+            the sidebar.
           </p>
         </div>
+      ) : isTopicView ? (
+        <section className="space-y-4">
+          <div>
+            <h3 className="fin-section-title">{topicQuery} stories</h3>
+            <p className="text-sm text-fin-subtle">
+              Up to {topicStories.length} stor{topicStories.length === 1 ? "y" : "ies"} from today&apos;s saved
+              edition
+            </p>
+          </div>
+          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+            {topicStories.map((brief, index) => (
+              <ArticleCard
+                key={brief.id}
+                article={brief}
+                variant={index === 0 ? "hero" : "standard"}
+                priorityImage={index === 0}
+              />
+            ))}
+          </div>
+        </section>
       ) : (
         <div className="space-y-10">
           {groupedSections.map((section) => {
@@ -270,7 +314,7 @@ export function DashboardFeed({
         </div>
       )}
 
-      {(visibleCount < briefs.length || hasMore) && (
+      {!isTopicView && (visibleCount < editionBriefs.length || hasMore) && (
         <div className="flex justify-center">
           <button
             type="button"

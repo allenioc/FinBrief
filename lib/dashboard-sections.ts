@@ -124,7 +124,8 @@ export function buildDashboardSections(
   // Use the full saved daily edition; week scoping is applied when the edition is fetched.
   const pool = filterHardUniqueStories(rankStories(briefs));
 
-  const topStories = pool.slice(0, DASHBOARD_TOP_STORIES_MAX);
+  const topLimit = Math.min(DASHBOARD_TOP_STORIES_MAX, pool.length);
+  const topStories = pool.slice(0, topLimit);
 
   const marketStories = filterUniqueStories(
     pool.filter((brief) => brief.articleType === "market news" || brief.articleType === "macro news"),

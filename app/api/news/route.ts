@@ -9,6 +9,7 @@ import { providerArticlesToBriefs } from "@/lib/news-normalizer";
 import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
 import { searchBriefs } from "@/lib/briefs";
 import { enrichBriefImage, countArticlesWithImageUrl } from "@/lib/article-image";
+import { filterBriefsForTopic } from "@/lib/topic-stories";
 import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
 import type { Brief } from "@/lib/types";
 
@@ -143,6 +144,52 @@ function withDebugFields(payload: CachedPayload, fields: Omit<CacheDebugFields, 
     cacheBackend: cacheBackendDescription(),
     savedEditionArticleCount: enriched.briefs.length,
     articlesWithImageUrl: countArticlesWithImageUrl(enriched.briefs),
+  };
+}
+
+async function loadBroadSavedEdition(
+  today: string,
+  timeRange: ProviderTimeRange,
+  fetchLimit: number
+): Promise<{ payload: CachedPayload; fetchedAt: string } | null> {
+  const broadKey = BROAD_NEWS_QUERY;
+  const editionKey = `edition::${broadKey}::${timeRange}::${fetchLimit}::1`;
+  const lastGoodKey = `lastgood::${broadKey}::${timeRange}`;
+  const savedEdition = await cacheGet<EditionRecord>(editionKey);
+  if (
+    savedEdition &&
+    savedEdition.value.editionDate === today &&
+    savedEdition.value.payload.articleCount > 0
+  ) {
+    return {
+      payload: savedEdition.value.payload,
+      fetchedAt: savedEdition.value.payload.fetchedAt,
+    };
+  }
+  const lastGood = await cacheGet<LastGoodRecord>(lastGoodKey);
+  if (lastGood && lastGood.value.payload.articleCount > 0) {
+    return { payload: lastGood.value.payload, fetchedAt: lastGood.value.fetchedAt };
+  }
+  if (savedEdition && savedEdition.value.payload.articleCount > 0) {
+    return {
+      payload: savedEdition.value.payload,
+      fetchedAt: savedEdition.value.payload.fetchedAt,
+    };
+  }
+  return null;
+}
+
+function topicFilteredPayload(base: CachedPayload, topicQuery: string): CachedPayload {
+  const filtered = filterBriefsForTopic(base.briefs, topicQuery);
+  return {
+    ...base,
+    query: topicQuery,
+    briefs: filtered,
+    articles: [],
+    normalized: [],
+    articleCount: filtered.length,
+    hasMore: false,
+    totalAvailable: filtered.length,
   };
 }
 
@@ -438,6 +485,32 @@ export async function GET(request: NextRequest) {
     }
   } else {
     reasonAllowed = "authorized_admin_refresh";
+  }
+
+  // Topic views filter the saved broad daily edition only — never call live providers.
+  if (!adminRefresh && query.trim() && !isBroadDashboardEdition) {
+    const broadSaved = await loadBroadSavedEdition(today, timeRange, DAILY_EDITION_ARTICLE_LIMIT);
+    if (broadSaved) {
+      return NextResponse.json(
+        withDebugFields(topicFilteredPayload(broadSaved.payload, query), {
+          cacheStatus: "topic_filter:broad_edition",
+          editionDate: today,
+          lastSuccessfulFetchedAt: broadSaved.fetchedAt,
+          reasonProviderFetchWasSkipped: "topic_filter_from_saved_broad_edition",
+          reasonProviderFetchWasAllowed: null,
+        })
+      );
+    }
+    const mockBase = toMockPayload("", page, fetchLimit);
+    return NextResponse.json(
+      withDebugFields(topicFilteredPayload(mockBase, query), {
+        cacheStatus: "topic_filter:mock_fallback",
+        editionDate: today,
+        lastSuccessfulFetchedAt: null,
+        reasonProviderFetchWasSkipped: "topic_filter_no_saved_broad_edition",
+        reasonProviderFetchWasAllowed: null,
+      })
+    );
   }
 
   // 3) Cache rules allow a live fetch: this is the only place providers are called.

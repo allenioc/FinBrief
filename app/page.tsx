@@ -17,11 +17,11 @@ interface HomeProps {
 export default async function HomePage({ searchParams }: HomeProps) {
   const params = await searchParams;
   const query = params.q?.trim() ?? "";
-  const initialBriefs = await getBriefs(query);
+  const initialBriefs = await getBriefs("");
   const isTopicView = query.length > 0;
   const title = isTopicView ? `${query} news feed` : "Understand markets with clarity";
   const description = isTopicView
-    ? `Showing latest stories for ${query} from the current daily edition.`
+    ? `Stories for ${query} from today's saved daily edition.`
     : undefined;
 
   return (

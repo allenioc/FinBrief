@@ -1,13 +1,11 @@
 import type { Brief, BriefResponse } from "./types";
 import { MOCK_BRIEFS } from "./articles-data";
 import { DAILY_EDITION_ARTICLE_LIMIT } from "./news-constants";
-import { fromTopicSlug, toTopicSlug } from "./slug";
+import { enrichBriefImage } from "./article-image";
+import { fromTopicSlug } from "./slug";
+import { filterBriefsForTopic } from "./topic-stories";
 
 const liveBriefCache = new Map<string, Brief>();
-
-function normalizeQuery(q: string): string {
-  return q.trim().toLowerCase();
-}
 
 function dailyEditionKey(): string {
   const now = new Date();
@@ -17,72 +15,24 @@ function dailyEditionKey(): string {
   return `business-news-feed-${yyyy}-${mm}-${dd}`;
 }
 
-function matchesBrief(brief: Brief, query: string): boolean {
-  const q = normalizeQuery(query);
-  if (!q) return true;
-
-  const haystack = [
-    brief.ticker,
-    brief.topic,
-    brief.headline,
-    brief.summary,
-    brief.excerpt,
-    brief.id,
-    ...brief.keyAffectedAssets,
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  const aliases: Record<string, string[]> = {
-    inflation: ["inflation", "cpi"],
-    "interest rates": ["interest", "rates", "fed", "spy"],
-    rates: ["interest", "rates", "fed"],
-    tech: ["technology", "xlk", "ai", "qqq"],
-    xlk: ["technology", "xlk", "sector"],
-    nvda: ["nvidia", "nvda", "semiconductor", "ai"],
-    nvidia: ["nvidia", "nvda"],
-  };
-
-  const terms = aliases[q] ?? [q];
-  return terms.some((term) => haystack.includes(term));
-}
-
-export function searchBriefs(query: string): Brief[] {
-  const q = normalizeQuery(query);
-  if (!q) return MOCK_BRIEFS;
-  const filtered = MOCK_BRIEFS.filter((b) => matchesBrief(b, q));
-  return filtered.length > 0 ? filtered : MOCK_BRIEFS.slice(0, 3);
-}
-
 function cacheBriefs(briefs: Brief[]) {
   briefs.forEach((brief) => liveBriefCache.set(brief.id, brief));
 }
 
-export async function getBriefsForTopic(slug: string): Promise<Brief[]> {
-  const symbol = fromTopicSlug(slug);
-  const q = symbol.toLowerCase();
-  const localResults = MOCK_BRIEFS.filter(
-    (b) =>
-      b.ticker.toLowerCase() === q ||
-      b.topic.toLowerCase().includes(q) ||
-      b.keyAffectedAssets.some((a) => a.toLowerCase() === q || a.toLowerCase().includes(q)) ||
-      toTopicSlug(b.ticker) === slug ||
-      toTopicSlug(b.topic) === slug
-  );
-  const live = await getBriefs(symbol);
-  const merged = [...live];
-  localResults.forEach((item) => {
-    if (!merged.some((brief) => brief.id === item.id)) merged.push(item);
-  });
-  cacheBriefs(merged);
-  return merged.length > 0 ? merged : searchBriefs(symbol);
+function isEnrichedBrief(brief: Brief): boolean {
+  return Boolean(brief.thirtySecondVersion && brief.recommendedNext?.length && brief.headline);
 }
 
-export async function fetchBriefsFromApi(query: string): Promise<BriefResponse | null> {
+function normalizeBriefs(briefs: Brief[]): Brief[] {
+  const enriched = briefs.map(enrichBriefImage);
+  const filtered = enriched.filter(isEnrichedBrief);
+  return filtered.length > 0 ? filtered : enriched;
+}
+
+export async function fetchBroadEditionFromApi(): Promise<BriefResponse | null> {
   try {
-    const params = new URLSearchParams({ q: query || "" });
-    // Must match the dashboard client request exactly so both read/write the
-    // same saved edition cache entry (the edition key includes the limit).
+    const params = new URLSearchParams();
+    params.set("timeRange", "week");
     params.set("limit", String(DAILY_EDITION_ARTICLE_LIMIT));
     params.set("page", "1");
     params.set("edition", dailyEditionKey());
@@ -90,8 +40,7 @@ export async function fetchBriefsFromApi(query: string): Promise<BriefResponse |
     const baseUrl =
       process.env.NEXT_PUBLIC_SITE_URL ??
       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
-    const resolvedBase =
-      baseUrl || (typeof window === "undefined" ? localhostBase : "");
+    const resolvedBase = baseUrl || (typeof window === "undefined" ? localhostBase : "");
     const url = resolvedBase ? `${resolvedBase}/api/news?${params}` : `/api/news?${params}`;
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) return null;
@@ -102,28 +51,35 @@ export async function fetchBriefsFromApi(query: string): Promise<BriefResponse |
   }
 }
 
-function isEnrichedBrief(brief: Brief): boolean {
-  return Boolean(brief.thirtySecondVersion && brief.recommendedNext?.length && brief.headline);
+export async function getBriefsForTopic(slug: string): Promise<Brief[]> {
+  const topicQuery = fromTopicSlug(slug);
+  return getBriefs(topicQuery);
 }
 
 export async function getBriefs(query: string): Promise<Brief[]> {
-  const api = await fetchBriefsFromApi(query);
+  const api = await fetchBroadEditionFromApi();
   if (api) {
-    const enriched = api.briefs.filter(isEnrichedBrief);
-    const briefs = enriched.length > 0 ? enriched : api.briefs;
+    const briefs = normalizeBriefs(api.briefs);
     if (briefs.length > 0) {
       cacheBriefs(briefs);
     }
-    // Trust live provider responses (including empty results) so we don't silently
-    // fall back to stale demo cards when the provider is online.
     if (api.provider && api.provider !== "mock") {
-      return briefs;
+      return query.trim() ? filterBriefsForTopic(briefs, query) : briefs;
     }
     if (briefs.length > 0) {
-      return briefs;
+      return query.trim() ? filterBriefsForTopic(briefs, query) : briefs;
     }
   }
-  const fallback = searchBriefs(query);
+
+  const fallback = query.trim() ? filterBriefsForTopic(MOCK_BRIEFS, query) : MOCK_BRIEFS;
   cacheBriefs(fallback);
-  return fallback;
+  return fallback.map(enrichBriefImage);
+}
+
+export async function fetchBriefsFromApi(): Promise<BriefResponse | null> {
+  return fetchBroadEditionFromApi();
+}
+
+export function searchBriefs(query: string): Brief[] {
+  return filterBriefsForTopic(MOCK_BRIEFS, query, MOCK_BRIEFS.length);
 }
