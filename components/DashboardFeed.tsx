@@ -45,7 +45,7 @@ export function DashboardFeed({
   const activeQuery = query.trim() || DEFAULT_NEWS_QUERY;
   const isDefaultFeed = activeQuery === DEFAULT_NEWS_QUERY;
 
-  const [briefs, setBriefs] = useState<Brief[]>(initialBriefs);
+  const [briefs, setBriefs] = useState<Brief[]>(() => initialBriefs.map(enrichBriefImage));
 
   useEffect(() => {
     briefsRef.current = briefs;
@@ -125,8 +125,8 @@ export function DashboardFeed({
   }, [activeQuery, isDefaultFeed]);
 
   useEffect(() => {
-    setBriefs(initialBriefs);
-    briefsRef.current = initialBriefs;
+    setBriefs(initialBriefs.map(enrichBriefImage));
+    briefsRef.current = initialBriefs.map(enrichBriefImage);
     setPage(1);
     setHasMore(false);
     setVisibleCount(12);

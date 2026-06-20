@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { gradientForFallbackImage } from "@/lib/article-image";
 import type { ArticleImageMode } from "@/lib/article-image";
 import {
@@ -24,10 +24,6 @@ interface ArticleThumbnailProps {
   sizes?: string;
   className?: string;
 }
-
-type LoadState = "loading" | "loaded" | "fallback";
-
-const FALLBACK_TIMEOUT_MS = 4000;
 
 function FallbackVisual({
   alt,
@@ -76,78 +72,35 @@ export function ArticleThumbnail({
   className = "object-cover transition-transform duration-500 group-hover:scale-[1.03]",
 }: ArticleThumbnailProps) {
   const trimmedSrc = src?.trim() ?? "";
-  const canDisplay = isDisplayableRemoteImage(trimmedSrc);
-  const shouldUseFallback = imageDisplay === "fallback" || !canDisplay;
+  const tryProvider = imageDisplay !== "fallback" && isDisplayableRemoteImage(trimmedSrc);
   const stableFallbackId = fallbackImageId || articleId;
   const stableGradient = useMemo(
     () => gradientForFallbackImage(stableFallbackId, fallbackKind),
     [stableFallbackId, fallbackKind]
   );
-  const useNextImage = !shouldUseFallback && isOptimizableRemoteImage(trimmedSrc);
-  const [state, setState] = useState<LoadState>(shouldUseFallback ? "fallback" : "loading");
-  const timerRef = useRef<number | null>(null);
-  const mountedRef = useRef(true);
-  const loadingClass = `${className} transition-opacity duration-300 ${
-    state === "loaded" ? "opacity-100" : "opacity-0"
-  }`;
-
-  const showFallback = useCallback(() => {
-    if (!mountedRef.current) return;
-    setState("fallback");
-  }, []);
-
-  const markLoaded = useCallback(() => {
-    if (!mountedRef.current) return;
-    if (timerRef.current) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setState("loaded");
-  }, []);
-
-  const handleImageLoad = useCallback(
-    (naturalWidth: number, naturalHeight: number) => {
-      if (!naturalWidth || !naturalHeight) {
-        showFallback();
-        return;
-      }
-      markLoaded();
-    },
-    [markLoaded, showFallback]
-  );
+  const useNextImage = tryProvider && isOptimizableRemoteImage(trimmedSrc);
+  const [providerVisible, setProviderVisible] = useState(false);
 
   useEffect(() => {
-    mountedRef.current = true;
+    setProviderVisible(false);
+  }, [articleId, trimmedSrc, imageDisplay]);
 
-    if (shouldUseFallback) {
-      setState("fallback");
-      return () => {
-        mountedRef.current = false;
-      };
+  const onProviderLoad = useCallback((naturalWidth: number, naturalHeight: number) => {
+    if (naturalWidth > 0 && naturalHeight > 0) {
+      setProviderVisible(true);
     }
+  }, []);
 
-    setState("loading");
-    if (timerRef.current) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    timerRef.current = window.setTimeout(() => {
-      if (mountedRef.current) {
-        showFallback();
-      }
-    }, FALLBACK_TIMEOUT_MS);
+  const onProviderError = useCallback(() => {
+    setProviderVisible(false);
+  }, []);
 
-    return () => {
-      mountedRef.current = false;
-      if (timerRef.current) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [articleId, shouldUseFallback, showFallback, trimmedSrc]);
+  const overlayClass = `${className} transition-opacity duration-300 ${
+    providerVisible ? "opacity-100" : "opacity-0 pointer-events-none"
+  }`;
 
-  if (state === "fallback") {
-    return (
+  return (
+    <div className="relative h-full w-full overflow-hidden">
       <FallbackVisual
         alt={alt}
         fallbackLabel={fallbackLabel}
@@ -155,45 +108,35 @@ export function ArticleThumbnail({
         fallbackTitle={fallbackTitle}
         gradient={stableGradient}
       />
-    );
-  }
-
-  if (useNextImage) {
-    return (
-      <>
+      {tryProvider && useNextImage && (
         <Image
           src={trimmedSrc}
           alt={alt}
           fill
-          className={loadingClass}
+          className={overlayClass}
           sizes={sizes}
           priority={priority}
-          onError={showFallback}
+          onError={onProviderError}
           onLoad={(event) => {
             const img = event.currentTarget;
-            handleImageLoad(img.naturalWidth, img.naturalHeight);
+            onProviderLoad(img.naturalWidth, img.naturalHeight);
           }}
         />
-        {state === "loading" && <div className={`absolute inset-0 ${stableGradient}`} aria-hidden />}
-      </>
-    );
-  }
-
-  return (
-    <>
-      <img
-        src={trimmedSrc}
-        alt={alt}
-        loading={priority ? "eager" : "lazy"}
-        decoding="async"
-        className={`absolute inset-0 h-full w-full ${loadingClass}`}
-        sizes={sizes}
-        onError={showFallback}
-        onLoad={(event) => {
-          handleImageLoad(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight);
-        }}
-      />
-      {state === "loading" && <div className={`absolute inset-0 ${stableGradient}`} aria-hidden />}
-    </>
+      )}
+      {tryProvider && !useNextImage && (
+        <img
+          src={trimmedSrc}
+          alt={alt}
+          loading={priority ? "eager" : "lazy"}
+          decoding="async"
+          className={`absolute inset-0 h-full w-full ${overlayClass}`}
+          sizes={sizes}
+          onError={onProviderError}
+          onLoad={(event) => {
+            onProviderLoad(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight);
+          }}
+        />
+      )}
+    </div>
   );
 }

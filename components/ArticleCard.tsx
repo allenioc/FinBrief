@@ -61,7 +61,7 @@ export function ArticleCard({
         onClick={stashArticle}
         className={`relative block overflow-hidden bg-fin-muted ${imageAspect}`}
       >
-        <div className={`absolute ${imageInset} overflow-hidden rounded-image`}>
+        <div className={`absolute ${imageInset} h-full w-full overflow-hidden rounded-image`}>
           <ArticleThumbnail
             articleId={enriched.id}
             src={enriched.imageUrl}

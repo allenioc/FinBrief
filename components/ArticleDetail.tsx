@@ -57,7 +57,7 @@ export function ArticleDetail({ article }: { article: Brief }) {
     <div className="space-y-8">
       <article className="fin-card overflow-hidden">
         <div className="relative aspect-[2/1] w-full min-h-[220px] sm:min-h-[320px]">
-          <div className="absolute inset-4 overflow-hidden rounded-image sm:inset-6">
+          <div className="absolute inset-4 h-full w-full overflow-hidden rounded-image sm:inset-6">
             <ArticleThumbnail
               articleId={enriched.id}
               src={enriched.imageUrl}
