@@ -2,13 +2,6 @@ import type { ArticleType, Brief } from "./types";
 
 export type ArticleImageMode = "provider" | "fallback";
 
-export type CachedArticleImageResolution = {
-  mode: ArticleImageMode;
-  imageUrl?: string;
-};
-
-const IMAGE_RESOLUTION_PREFIX = "finbrief-image-res-";
-
 const PALETTES_BY_TYPE: Record<ArticleType, string[]> = {
   "macro news": [
     "bg-gradient-to-br from-slate-100 via-sky-100 to-blue-200",
@@ -66,6 +59,10 @@ export function computeFallbackImageId(input: {
   return `${articleTypeSlug(input.articleType)}-${bucket}`;
 }
 
+export function resolveImageDisplay(imageUrl?: string): ArticleImageMode {
+  return imageUrl?.trim() ? "provider" : "fallback";
+}
+
 export function resolveFallbackImageId(
   brief: Pick<Brief, "id" | "originalUrl" | "source" | "articleType" | "fallbackImageId">
 ): string {
@@ -80,10 +77,13 @@ export function resolveFallbackImageId(
   );
 }
 
-export function enrichBriefImage<T extends Brief>(brief: T): T {
+export function enrichBriefImage<T extends Brief>(brief: T): T & { fallbackImageId: string; imageDisplay: ArticleImageMode } {
   const fallbackImageId = resolveFallbackImageId(brief);
-  if (brief.fallbackImageId === fallbackImageId) return brief;
-  return { ...brief, fallbackImageId };
+  const imageDisplay = brief.imageDisplay ?? resolveImageDisplay(brief.imageUrl);
+  if (brief.fallbackImageId === fallbackImageId && brief.imageDisplay === imageDisplay) {
+    return brief as T & { fallbackImageId: string; imageDisplay: ArticleImageMode };
+  }
+  return { ...brief, fallbackImageId, imageDisplay };
 }
 
 export function gradientForFallbackImage(
@@ -94,29 +94,6 @@ export function gradientForFallbackImage(
   return palettes[hashString(fallbackImageId) % palettes.length];
 }
 
-export function imageResolutionStorageKey(articleId: string): string {
-  return `${IMAGE_RESOLUTION_PREFIX}${articleId}`;
-}
-
-export function readCachedImageResolution(articleId: string): CachedArticleImageResolution | null {
-  if (typeof window === "undefined" || !articleId) return null;
-  try {
-    const raw = sessionStorage.getItem(imageResolutionStorageKey(articleId));
-    if (!raw) return null;
-    return JSON.parse(raw) as CachedArticleImageResolution;
-  } catch {
-    return null;
-  }
-}
-
-export function writeCachedImageResolution(
-  articleId: string,
-  resolution: CachedArticleImageResolution
-): void {
-  if (typeof window === "undefined" || !articleId) return;
-  try {
-    sessionStorage.setItem(imageResolutionStorageKey(articleId), JSON.stringify(resolution));
-  } catch {
-    // Ignore storage errors (private mode, quota).
-  }
+export function countArticlesWithImageUrl(briefs: Brief[]): number {
+  return briefs.filter((brief) => Boolean(brief.imageUrl?.trim())).length;
 }

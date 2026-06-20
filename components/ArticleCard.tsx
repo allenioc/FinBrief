@@ -6,7 +6,7 @@ import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
 import { formatDateTime, formatPublishedTimeLabel } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
-import { resolveFallbackImageId, enrichBriefImage } from "@/lib/article-image";
+import { enrichBriefImage } from "@/lib/article-image";
 import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
 import { AssetTags } from "./AssetTags";
@@ -25,8 +25,10 @@ export function ArticleCard({
   variant?: "hero" | "standard" | "compact";
   priorityImage?: boolean;
 }) {
-  const fallbackLabel = article.ticker !== "—" ? article.ticker : article.topic;
-  const fallbackImageId = resolveFallbackImageId(article);
+  const enriched = enrichBriefImage(article);
+  const fallbackLabel = enriched.ticker !== "—" ? enriched.ticker : enriched.topic;
+  const fallbackImageId = enriched.fallbackImageId;
+  const imageDisplay = enriched.imageDisplay;
   const isHero = variant === "hero";
   const isCompact = variant === "compact";
   const watchlistItem = watchlistItemFromBrief(article);
@@ -42,10 +44,7 @@ export function ArticleCard({
   // depending on server-side caches (which are per-instance on Vercel).
   const stashArticle = () => {
     try {
-      sessionStorage.setItem(
-        `finbrief-article-${article.id}`,
-        JSON.stringify(enrichBriefImage({ ...article, fallbackImageId }))
-      );
+      sessionStorage.setItem(`finbrief-article-${enriched.id}`, JSON.stringify(enriched));
     } catch {
       // Storage may be unavailable (private mode); the brief page has API fallbacks.
     }
@@ -64,10 +63,11 @@ export function ArticleCard({
       >
         <div className={`absolute ${imageInset} overflow-hidden rounded-image`}>
           <ArticleThumbnail
-            articleId={article.id}
-            src={article.imageUrl}
+            articleId={enriched.id}
+            src={enriched.imageUrl}
+            imageDisplay={imageDisplay}
             fallbackImageId={fallbackImageId}
-            alt={article.imageAlt || article.headline}
+            alt={enriched.imageAlt || enriched.headline}
             fallbackLabel={fallbackLabel}
             fallbackSub={article.source}
             fallbackTitle={article.headline}

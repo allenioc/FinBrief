@@ -8,6 +8,7 @@ import {
 import { formatLastUpdated } from "@/lib/date-format";
 import { friendlyEditionError } from "@/lib/user-messages";
 import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
+import { enrichBriefImage } from "@/lib/article-image";
 import { buildDashboardSections } from "@/lib/dashboard-sections";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleCard } from "./ArticleCard";
@@ -36,6 +37,10 @@ export function DashboardFeed({
   const [hasMore, setHasMore] = useState(false);
   const [hasLoadedApi, setHasLoadedApi] = useState(initialBriefs.length > 0);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [apiLayoutDebug, setApiLayoutDebug] = useState<{
+    savedEditionArticleCount: number;
+    articlesWithImageUrl: number;
+  } | null>(null);
   const { items: watchlistItems } = useWatchlist();
   const briefsRef = useRef<Brief[]>(initialBriefs);
   const isRefreshingRef = useRef(false);
@@ -79,9 +84,15 @@ export function DashboardFeed({
           hasMore?: boolean;
           provider?: string;
           errorMessage?: string;
+          savedEditionArticleCount?: number;
+          articlesWithImageUrl?: number;
         };
         setApiError(friendlyEditionError(payload.errorMessage) ?? null);
-        const apiBriefs = payload.briefs ?? [];
+        setApiLayoutDebug({
+          savedEditionArticleCount: payload.savedEditionArticleCount ?? payload.briefs?.length ?? 0,
+          articlesWithImageUrl: payload.articlesWithImageUrl ?? 0,
+        });
+        const apiBriefs = (payload.briefs ?? []).map(enrichBriefImage);
         const provider = payload.provider ?? "mock";
         const nextBriefs =
           provider === "mock" && apiBriefs.length === 0 ? initialBriefs : apiBriefs;
@@ -123,6 +134,7 @@ export function DashboardFeed({
     setVisibleCount(12);
     setHasLoadedApi(initialBriefs.length > 0);
     setApiError(null);
+    setApiLayoutDebug(null);
   }, [activeQuery, initialBriefs]);
 
   const handleLoadMore = useCallback(async () => {
@@ -179,8 +191,10 @@ export function DashboardFeed({
     };
   }, [isDefaultFeed, refreshFeed]);
 
-  const groupedSections = buildDashboardSections(briefs, watchlistItems);
+  const { sections: groupedSections, layoutDebug } = buildDashboardSections(briefs, watchlistItems);
   const hasVisibleStories = groupedSections.some((section) => section.stories.length > 0);
+  const editionArticleCount = apiLayoutDebug?.savedEditionArticleCount ?? layoutDebug.savedEditionArticleCount;
+  const editionImageCount = apiLayoutDebug?.articlesWithImageUrl ?? layoutDebug.articlesWithImageUrl;
 
   return (
     <div className="space-y-6">
@@ -189,6 +203,14 @@ export function DashboardFeed({
           <span className="font-semibold text-fin-navy">Daily edition</span>
           <span>{formatLastUpdated(meta.lastUpdatedAt)}</span>
           <span>{briefs.length} stories</span>
+          <span
+            className="text-[11px] text-fin-subtle"
+            data-layout-debug
+            title="Dashboard layout debug"
+          >
+            Edition {editionArticleCount} saved · Top {layoutDebug.topStoriesCount} · Watchlist{" "}
+            {layoutDebug.watchlistStoriesCount} · imageUrl {editionImageCount}
+          </span>
         </div>
         <p className="text-xs text-fin-subtle">Daily edition updates once per day.</p>
       </div>
@@ -220,8 +242,7 @@ export function DashboardFeed({
       ) : (
         <div className="space-y-10">
           {groupedSections.map((section) => {
-            const isWatchlistSection = section.title === "Watchlist Stories";
-            if (section.stories.length === 0 && !isWatchlistSection) return null;
+            if (section.stories.length === 0) return null;
 
             return (
               <section key={section.title} className="space-y-4">
@@ -229,28 +250,22 @@ export function DashboardFeed({
                   <h3 className="fin-section-title">{section.title}</h3>
                   <p className="text-sm text-fin-subtle">{section.subtitle}</p>
                 </div>
-                {isWatchlistSection && section.stories.length === 0 ? (
-                  <p className="fin-panel py-8 text-center text-sm text-fin-subtle" role="status">
-                    {section.emptyMessage}
-                  </p>
-                ) : (
-                  <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-                    {section.stories.map((brief, index) => (
-                      <ArticleCard
-                        key={`${brief.id}-${toTopicSlug(section.title)}`}
-                        article={brief}
-                        variant={
-                          section.title === "Top Stories" && index === 0
-                            ? "hero"
-                            : section.title === "Top Stories"
-                              ? "standard"
-                              : "compact"
-                        }
-                        priorityImage={section.title === "Top Stories" && index === 0}
-                      />
-                    ))}
-                  </div>
-                )}
+                <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                  {section.stories.map((brief, index) => (
+                    <ArticleCard
+                      key={`${brief.id}-${toTopicSlug(section.title)}`}
+                      article={brief}
+                      variant={
+                        section.title === "Top Stories" && index === 0
+                          ? "hero"
+                          : section.title === "Top Stories"
+                            ? "standard"
+                            : "compact"
+                      }
+                      priorityImage={section.title === "Top Stories" && index === 0}
+                    />
+                  ))}
+                </div>
               </section>
             );
           })}

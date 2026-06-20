@@ -8,7 +8,7 @@ import {
 import { providerArticlesToBriefs } from "@/lib/news-normalizer";
 import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
 import { searchBriefs } from "@/lib/briefs";
-import { enrichBriefImage } from "@/lib/article-image";
+import { enrichBriefImage, countArticlesWithImageUrl } from "@/lib/article-image";
 import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
 import type { Brief } from "@/lib/types";
 
@@ -75,6 +75,8 @@ type CacheDebugFields = {
   lastSuccessfulFetchedAt: string | null;
   reasonProviderFetchWasSkipped: string | null;
   reasonProviderFetchWasAllowed: string | null;
+  savedEditionArticleCount: number;
+  articlesWithImageUrl: number;
 };
 
 /**
@@ -104,11 +106,43 @@ function isAdminRequest(request: NextRequest): { authorized: boolean; note?: str
   return { authorized: provided === secret };
 }
 
-function withDebugFields(payload: CachedPayload, fields: Omit<CacheDebugFields, "cacheBackend">) {
+function enrichPayloadBriefs(payload: CachedPayload): CachedPayload {
+  const briefs = payload.briefs.map(enrichBriefImage);
+  const syncImageFields = <T extends { imageUrl?: string; fallbackImageId?: string; imageDisplay?: "provider" | "fallback" }>(
+    article: T,
+    brief: (typeof briefs)[number]
+  ): T => ({
+    ...article,
+    imageUrl: brief.imageUrl,
+    fallbackImageId: brief.fallbackImageId,
+    imageDisplay: brief.imageDisplay,
+  });
+
   return {
     ...payload,
+    briefs,
+    articles: payload.articles.map((article, index) => {
+      const brief = briefs[index];
+      if (!brief) return article;
+      return syncImageFields(article, brief);
+    }),
+    normalized: payload.normalized.map((article, index) => {
+      const brief = briefs[index];
+      if (!brief) return article;
+      return syncImageFields(article, brief);
+    }),
+    articleCount: briefs.length,
+  };
+}
+
+function withDebugFields(payload: CachedPayload, fields: Omit<CacheDebugFields, "cacheBackend" | "savedEditionArticleCount" | "articlesWithImageUrl">) {
+  const enriched = enrichPayloadBriefs(payload);
+  return {
+    ...enriched,
     ...fields,
     cacheBackend: cacheBackendDescription(),
+    savedEditionArticleCount: enriched.briefs.length,
+    articlesWithImageUrl: countArticlesWithImageUrl(enriched.briefs),
   };
 }
 
@@ -134,6 +168,7 @@ function toMockPayload(query: string, page: number, limit: number): CachedPayloa
       publishedAt: brief.publishedAt,
       imageUrl: brief.imageUrl,
       fallbackImageId: brief.fallbackImageId,
+      imageDisplay: brief.imageDisplay,
       originalUrl: brief.originalUrl,
       excerpt: brief.excerpt,
       relatedTickerOrTopic: brief.ticker !== "—" ? brief.ticker : brief.topic,
@@ -172,6 +207,7 @@ function toMockPayload(query: string, page: number, limit: number): CachedPayloa
       publishedAt: brief.publishedAt,
       imageUrl: brief.imageUrl,
       fallbackImageId: brief.fallbackImageId,
+      imageDisplay: brief.imageDisplay,
       originalUrl: brief.originalUrl,
       excerpt: brief.excerpt,
       relatedTickerOrTopic: brief.ticker !== "—" ? brief.ticker : brief.topic,
@@ -266,7 +302,7 @@ export async function GET(request: NextRequest) {
   const isBroadDashboardEdition =
     page === 1 && (queryKey === "broad-business-finance" || queryKey === BROAD_NEWS_QUERY);
   const fetchLimit = isBroadDashboardEdition ? Math.max(limit, DAILY_EDITION_ARTICLE_LIMIT) : limit;
-  const editionKey = `edition::${queryKey}::${timeRange}::${limit}::${page}`;
+  const editionKey = `edition::${queryKey}::${timeRange}::${fetchLimit}::${page}`;
   const lastGoodKey = `lastgood::${queryKey}::${timeRange}`;
   const scopeKey = `${queryKey}::${timeRange}`;
 
@@ -451,22 +487,22 @@ export async function GET(request: NextRequest) {
 
   if (isSuccessfulLiveFetch) {
     failureCooldownByScope.delete(scopeKey);
+    const enrichedPayload = enrichPayloadBriefs(payload);
     await Promise.all([
       cacheSet(editionKey, {
         editionDate: today,
         savedAt: new Date().toISOString(),
-        payload,
+        payload: enrichedPayload,
       } satisfies EditionRecord),
       cacheSet(lastGoodKey, {
-        fetchedAt: payload.fetchedAt,
-        payload,
+        fetchedAt: enrichedPayload.fetchedAt,
+        payload: enrichedPayload,
       } satisfies LastGoodRecord),
-      // Index each article by id so /brief/[id] can resolve clicked stories
-      // without re-fetching providers.
-      ...payload.briefs.map((brief) => cacheSet(`article::${brief.id}`, brief)),
+      ...enrichedPayload.briefs.map((brief) => cacheSet(`article::${brief.id}`, brief)),
     ]);
     cacheStatus = "live_fetch_saved_as_todays_edition";
-    lastSuccessfulFetchedAt = payload.fetchedAt;
+    lastSuccessfulFetchedAt = enrichedPayload.fetchedAt;
+    payload = enrichedPayload;
   } else {
     // Never save 0-story or rate-limited/error responses as a successful edition.
     if (providerResponse) {
