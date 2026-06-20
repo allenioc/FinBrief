@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatLastUpdated } from "@/lib/date-format";
 import { friendlyEditionError } from "@/lib/user-messages";
-import { DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
+import { DAILY_EDITION_ARTICLE_LIMIT, TOPIC_STORIES_MAX } from "@/lib/news-constants";
 import { dailyEditionRequestKey } from "@/lib/daily-edition-client";
 import { buildDashboardSections } from "@/lib/dashboard-sections";
-import { filterBriefsForTopic } from "@/lib/topic-stories";
+import { filterBriefsForTopic, findWatchlistItemForQuery } from "@/lib/topic-stories";
 import { toTopicSlug } from "@/lib/slug";
 import type { Brief } from "@/lib/types";
 import { useDailyEdition } from "./DailyEditionProvider";
+import { useWatchlist } from "./WatchlistProvider";
 import { ArticleCard } from "./ArticleCard";
 
 export function DashboardFeed({
@@ -30,6 +31,7 @@ export function DashboardFeed({
     hydrateFromServer,
     appendPage,
   } = useDailyEdition();
+  const { items: watchlistItems } = useWatchlist();
 
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [visibleCount, setVisibleCount] = useState(12);
@@ -41,9 +43,15 @@ export function DashboardFeed({
     hydrateFromServer(initialBriefs);
   }, [hydrateFromServer, initialBriefs]);
 
+  const followedTopic = useMemo(
+    () => (isTopicView ? findWatchlistItemForQuery(watchlistItems, topicQuery) : undefined),
+    [isTopicView, topicQuery, watchlistItems]
+  );
+
   const topicStories = useMemo(
-    () => (isTopicView ? filterBriefsForTopic(editionBriefs, topicQuery) : []),
-    [editionBriefs, isTopicView, topicQuery]
+    () =>
+      isTopicView ? filterBriefsForTopic(editionBriefs, topicQuery, TOPIC_STORIES_MAX, followedTopic) : [],
+    [editionBriefs, followedTopic, isTopicView, topicQuery]
   );
 
   const { sections: groupedSections, layoutDebug } = buildDashboardSections(editionBriefs);

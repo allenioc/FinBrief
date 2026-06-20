@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import { Sidebar } from "./Sidebar";
 import { SiteFooter } from "./SiteFooter";
@@ -50,7 +50,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-fin-bg">
       <div className="hidden lg:flex">
-        <Sidebar />
+        <Suspense fallback={<div className="h-full w-[260px] border-r border-fin-border bg-fin-sidebar" />}>
+          <Sidebar />
+        </Suspense>
       </div>
 
       {mobileNavVisible && (
@@ -77,7 +79,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               paddingBottom: "env(safe-area-inset-bottom)",
             }}
           >
-            <Sidebar onNavigate={closeMobileNav} onClose={closeMobileNav} />
+            <Suspense fallback={null}>
+              <Sidebar onNavigate={closeMobileNav} onClose={closeMobileNav} />
+            </Suspense>
           </div>
         </div>
       )}

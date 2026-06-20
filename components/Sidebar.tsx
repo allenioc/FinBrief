@@ -2,13 +2,17 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { BRAND, SIDEBAR_NAV } from "@/lib/theme";
 import { useWatchlist } from "./WatchlistProvider";
 
-function isActive(pathname: string, href: string): boolean {
-  if (href === "/") return pathname === "/";
-  if (href.includes("focus=search")) return pathname === "/";
+function isActive(pathname: string, href: string, searchParams: URLSearchParams): boolean {
+  if (href.startsWith("/?q=")) {
+    const url = new URL(href, "http://localhost");
+    const topic = url.searchParams.get("q");
+    return pathname === "/" && searchParams.get("q") === topic;
+  }
+  if (href === "/") return pathname === "/" && !searchParams.get("q");
   const base = href.split("?")[0];
   return pathname === base || pathname.startsWith(`${base}/`);
 }
@@ -21,22 +25,23 @@ export function Sidebar({
   onClose?: () => void;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { items } = useWatchlist();
-  const followingItems = items.slice(0, 8).map((item) => ({
+
+  const followingItems = items.map((item) => ({
     label: item.symbol,
     href: `/?q=${encodeURIComponent(item.symbol)}`,
   }));
-  const navSections = SIDEBAR_NAV.map((section) =>
-    section.label === "Topics"
-      ? {
-          ...section,
-          items:
-            followingItems.length > 0
-              ? followingItems
-              : section.items,
-        }
-      : section
-  );
+
+  const defaultTopics = SIDEBAR_NAV.find((section) => section.label === "Topics")?.items ?? [];
+  const mainSections = SIDEBAR_NAV.filter((section) => section.label !== "Topics");
+  const navSections = [
+    ...mainSections,
+    ...(followingItems.length > 0
+      ? [{ label: "Following", items: followingItems }]
+      : []),
+    { label: "Topics", items: defaultTopics },
+  ];
 
   return (
     <aside className="flex h-full w-full shrink-0 flex-col border-r border-fin-border bg-fin-sidebar shadow-float lg:w-[260px]">
@@ -79,9 +84,9 @@ export function Sidebar({
             <p className="mb-2 px-3 fin-label">{section.label}</p>
             <ul className="space-y-0.5">
               {section.items.map((item) => {
-                const active = isActive(pathname, item.href);
+                const active = isActive(pathname, item.href, searchParams);
                 return (
-                  <li key={item.href + item.label}>
+                  <li key={`${section.label}-${item.href}-${item.label}`}>
                     <Link
                       href={item.href}
                       onClick={onNavigate}

@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { WATCHLIST_SUGGESTIONS } from "@/lib/watchlist-data";
-import { createWatchlistItem } from "@/lib/watchlist-utils";
+import { normalizeFollowInput } from "@/lib/watchlist-utils";
 import { useWatchlist } from "./WatchlistProvider";
 
 export function AddToWatchlist() {
@@ -11,21 +11,15 @@ export function AddToWatchlist() {
   const { addFollow, removeFollow, isFollowing } = useWatchlist();
 
   function addItem(symbol: string, name?: string, type?: (typeof WATCHLIST_SUGGESTIONS)[number]["type"]) {
-    const normalized = symbol.trim().toUpperCase();
-    if (!normalized) return;
-    const label = name ? `${normalized} (${name})` : normalized;
-    if (isFollowing(normalized)) {
-      removeFollow(normalized);
+    const item = normalizeFollowInput({ symbol, name, type });
+    if (!item) return;
+    const label = item.name !== item.symbol ? `${item.symbol} (${item.name})` : item.symbol;
+    if (isFollowing(item.symbol)) {
+      removeFollow(item.symbol);
       setMessage(`${label} removed from watchlist.`);
     } else {
-      addFollow(
-        createWatchlistItem({
-          symbol: normalized,
-          name,
-          type,
-        })
-      );
-      setMessage(`${label} added to watchlist.`);
+      addFollow(item);
+      setMessage(`${label} added. Open it from Following in the sidebar to see related stories.`);
     }
     setQuery("");
     setTimeout(() => setMessage(null), 3200);
@@ -42,7 +36,8 @@ export function AddToWatchlist() {
     <section className="fin-panel">
       <h2 className="fin-section-title">Add to watchlist</h2>
       <p className="mt-2 text-sm text-fin-subtle">
-        Search a ticker, ETF, sector, or macro topic to follow on your watchlist.
+        Follow a ticker, ETF, sector, or macro topic. Followed items appear in the sidebar and show up to 3
+        related stories from today&apos;s saved daily edition.
       </p>
 
       <form onSubmit={onSubmit} className="mt-5 flex flex-col gap-3 sm:flex-row">
@@ -50,7 +45,7 @@ export function AddToWatchlist() {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="e.g. GOOGL, XLK, Energy…"
+          placeholder="e.g. GOOGL, XLK, Energy, Fed Policy…"
           className="flex-1 rounded-full border border-fin-border bg-fin-muted px-4 py-2.5 text-sm focus:border-fin-brand focus:outline-none focus:ring-2 focus:ring-fin-brand/20"
           aria-label="Symbol or topic to add"
         />
@@ -64,14 +59,14 @@ export function AddToWatchlist() {
           <button
             key={item.symbol}
             type="button"
-          onClick={() => addItem(item.symbol, item.name, item.type)}
-          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-            isFollowing(item.symbol)
-              ? "border-status-negative/30 bg-status-negative-bg text-status-negative hover:opacity-90"
-              : "border-fin-border text-fin-navy hover:border-fin-brand hover:bg-fin-brand-soft"
-          }`}
+            onClick={() => addItem(item.symbol, item.name, item.type)}
+            className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+              isFollowing(item.symbol)
+                ? "border-status-negative/30 bg-status-negative-bg text-status-negative hover:opacity-90"
+                : "border-fin-border text-fin-navy hover:border-fin-brand hover:bg-fin-brand-soft"
+            }`}
           >
-          {isFollowing(item.symbol) ? `Unfollow ${item.symbol}` : `Follow ${item.symbol}`}
+            {isFollowing(item.symbol) ? `Unfollow ${item.symbol}` : `Follow ${item.symbol}`}
           </button>
         ))}
       </div>

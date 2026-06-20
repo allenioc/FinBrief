@@ -7,12 +7,44 @@ function toSymbol(value: string): string {
   return value.trim().toUpperCase();
 }
 
+const KNOWN_ETFS = new Set([
+  "SPY",
+  "QQQ",
+  "VTI",
+  "DIA",
+  "XLK",
+  "SMH",
+  "TLT",
+  "IWM",
+  "EFA",
+  "EEM",
+]);
+
 export function inferWatchlistType(symbol: string): WatchlistItemType {
   const trimmed = symbol.trim();
   if (!trimmed) return "topic";
   if (trimmed.includes(" ")) return "topic";
-  if (trimmed.length <= 5) return "stock";
+  const upper = trimmed.toUpperCase();
+  if (KNOWN_ETFS.has(upper)) return "etf";
+  if (/^[A-Z]{1,5}$/.test(upper)) return "stock";
   return "topic";
+}
+
+export function normalizeFollowInput(input: {
+  symbol: string;
+  name?: string;
+  type?: WatchlistItemType;
+}): WatchlistItem | null {
+  const trimmed = input.symbol.trim();
+  if (!trimmed) return null;
+  const type = input.type ?? inferWatchlistType(trimmed);
+  const symbol =
+    type === "stock" || type === "etf" || type === "index" ? trimmed.toUpperCase() : trimmed;
+  return createWatchlistItem({
+    symbol,
+    name: input.name?.trim() || trimmed,
+    type,
+  });
 }
 
 export function createWatchlistItem(input: {

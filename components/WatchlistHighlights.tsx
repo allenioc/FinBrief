@@ -22,7 +22,7 @@ export function WatchlistHighlights() {
         <Link key={item.id} href={`/?q=${encodeURIComponent(item.symbol)}`} className="fin-card fin-card-hover p-4">
           <span className="font-mono text-sm font-bold text-fin-brand">{item.symbol}</span>
           <p className="mt-1 text-xs text-fin-subtle line-clamp-2">{item.name}</p>
-          <p className="mt-2 text-xs font-medium text-fin-subtle">Open live topic feed</p>
+          <p className="mt-2 text-xs font-medium text-fin-subtle">View related stories from today&apos;s edition</p>
           <div className="mt-3">
             <FollowToggleButton item={item} />
           </div>
