@@ -297,6 +297,7 @@ export function buildDashboardSections(
       title: "Watchlist Stories",
       subtitle: "Stories tied to assets you follow",
       stories: watchlistStories,
+      emptyMessage: "No watchlist-specific stories in today's edition.",
     },
   ];
 }

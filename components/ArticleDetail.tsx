@@ -10,10 +10,8 @@ import { ArticleTypeBadge } from "./ArticleTypeBadge";
 import { AssetTags } from "./AssetTags";
 import { ConfidenceScore } from "./ConfidenceScore";
 import { DataSnapshotPanel } from "./DataSnapshot";
-import { Disclaimer } from "./Disclaimer";
 import { FollowToggleButton } from "./FollowToggleButton";
 import { MarketImpactBadge } from "./MarketImpactBadge";
-import { PublisherNote } from "./PublisherNote";
 import { RecommendedNext } from "./RecommendedNext";
 import { SentimentBadge } from "./SentimentBadge";
 import { TooltipLabel } from "./Tooltip";
@@ -129,10 +127,6 @@ export function ArticleDetail({ article }: { article: Brief }) {
               <FollowToggleButton item={watchlistItem} className="fin-btn-secondary" />
             </div>
           </div>
-        </div>
-
-        <div className="border-t border-fin-border bg-fin-muted/40 px-6 py-4 sm:px-10">
-          <PublisherNote compact />
         </div>
       </article>
 
@@ -262,10 +256,6 @@ export function ArticleDetail({ article }: { article: Brief }) {
                 ))}
               </ul>
             )}
-            <div className="mt-6 space-y-3">
-              <Disclaimer compact />
-              <PublisherNote compact />
-            </div>
           </section>
         </div>
 

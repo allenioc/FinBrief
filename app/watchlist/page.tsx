@@ -1,6 +1,4 @@
 import { PageHeader } from "@/components/PageHeader";
-import { Disclaimer } from "@/components/Disclaimer";
-import { PublisherNote } from "@/components/PublisherNote";
 import { WatchlistClient } from "@/components/WatchlistClient";
 
 export default function WatchlistPage() {
@@ -13,11 +11,6 @@ export default function WatchlistPage() {
       />
 
       <WatchlistClient />
-
-      <div className="mt-10 space-y-4">
-        <PublisherNote />
-        <Disclaimer />
-      </div>
     </div>
   );
 }

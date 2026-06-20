@@ -1,5 +1,4 @@
 import { PageHeader } from "@/components/PageHeader";
-import { Disclaimer } from "@/components/Disclaimer";
 import { MarketBriefClient } from "@/components/MarketBriefClient";
 import { getBriefs } from "@/lib/briefs";
 import { MARKET_BRIEF } from "@/lib/market-brief-data";
@@ -18,10 +17,6 @@ export default async function MarketBriefPage() {
       />
 
       <MarketBriefClient initialData={initialData} />
-
-      <div className="mt-10">
-        <Disclaimer />
-      </div>
     </div>
   );
 }

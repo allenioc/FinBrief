@@ -3,8 +3,6 @@ import Link from "next/link";
 import { DashboardFeed } from "@/components/DashboardFeed";
 import { PageHeader } from "@/components/PageHeader";
 import { RecommendedTopics } from "@/components/RecommendedTopics";
-import { PublisherNote } from "@/components/PublisherNote";
-import { Disclaimer } from "@/components/Disclaimer";
 import { NewsletterWaitlist } from "@/components/NewsletterWaitlist";
 import { SearchBar } from "@/components/SearchBar";
 import { WatchlistHighlights } from "@/components/WatchlistHighlights";
@@ -78,11 +76,6 @@ export default async function HomePage({ searchParams }: HomeProps) {
         </div>
         <WatchlistHighlights />
       </section>
-
-      <div className="space-y-4">
-        <PublisherNote />
-        <Disclaimer />
-      </div>
     </div>
   );
 }
