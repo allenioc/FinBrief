@@ -3,6 +3,7 @@ import { Inter, JetBrains_Mono } from "next/font/google";
 import { AppShell } from "@/components/AppShell";
 import { TopBar } from "@/components/TopBar";
 import { WatchlistProvider } from "@/components/WatchlistProvider";
+import { DailyEditionProvider } from "@/components/DailyEditionProvider";
 import "./globals.css";
 
 const inter = Inter({
@@ -30,10 +31,12 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="font-sans antialiased">
         <WatchlistProvider>
-          <AppShell>
-            <TopBar />
-            <main className="flex-1">{children}</main>
-          </AppShell>
+          <DailyEditionProvider>
+            <AppShell>
+              <TopBar />
+              <main className="flex-1">{children}</main>
+            </AppShell>
+          </DailyEditionProvider>
         </WatchlistProvider>
       </body>
     </html>
