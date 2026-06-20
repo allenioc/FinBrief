@@ -316,14 +316,6 @@ function scoreTopStory(brief: Brief): number {
   return score;
 }
 
-function withinWeek(iso: string, now: number): boolean {
-  const published = publishedTime(iso);
-  if (!published) return true;
-  const ageMs = now - published;
-  if (ageMs < 0) return true;
-  return ageMs <= 7 * 24 * 60 * 60 * 1000;
-}
-
 function rankStories(stories: Brief[]): Brief[] {
   return [...stories].sort((a, b) => {
     const scoreDelta = scoreTopStory(b) - scoreTopStory(a);
@@ -361,9 +353,8 @@ export function buildDashboardSections(
   briefs: Brief[],
   watchlistItems: WatchlistItem[]
 ): { sections: DashboardSection[]; layoutDebug: DashboardLayoutDebug } {
-  const now = Date.now();
-  const scoped = briefs.filter((brief) => withinWeek(brief.publishedAt, now));
-  const pool = filterHardUniqueStories(rankStories(scoped));
+  // Use the full saved daily edition; week scoping is applied when the edition is fetched.
+  const pool = filterHardUniqueStories(rankStories(briefs));
 
   const topStories = pool.slice(0, DASHBOARD_TOP_STORIES_MAX);
   const watchlistStories = pickWatchlistStories(pool, topStories, watchlistItems);

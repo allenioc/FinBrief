@@ -822,7 +822,7 @@ export async function fetchProviderNews(
   const queryBatch = resolveQueryBatch(query, page, isBroadEditionFetch ? 8 : 4);
   const perQueryLimit = Math.max(
     4,
-    Math.ceil(((isBroadEditionFetch ? limit * 3 : limit * 1.5) / Math.max(1, queryBatch.length)))
+    Math.ceil(((isBroadEditionFetch ? limit * 4 : limit * 1.5) / Math.max(1, queryBatch.length)))
   );
   const runBatch = async (batch: string[]): Promise<RunBatchResult> => {
     const statusByProvider = new Map<ProviderName, ProviderRunStatus>();
