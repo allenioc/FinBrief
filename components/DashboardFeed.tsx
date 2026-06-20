@@ -12,7 +12,6 @@ import { enrichBriefImage } from "@/lib/article-image";
 import { buildDashboardSections } from "@/lib/dashboard-sections";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleCard } from "./ArticleCard";
-import { useWatchlist } from "./WatchlistProvider";
 
 const DEFAULT_NEWS_QUERY = BROAD_NEWS_QUERY;
 
@@ -41,7 +40,6 @@ export function DashboardFeed({
     savedEditionArticleCount: number;
     articlesWithImageUrl: number;
   } | null>(null);
-  const { items: watchlistItems } = useWatchlist();
   const briefsRef = useRef<Brief[]>(initialBriefs);
   const isRefreshingRef = useRef(false);
   const activeQuery = query.trim() || DEFAULT_NEWS_QUERY;
@@ -191,7 +189,7 @@ export function DashboardFeed({
     };
   }, [isDefaultFeed, refreshFeed]);
 
-  const { sections: groupedSections, layoutDebug } = buildDashboardSections(briefs, watchlistItems);
+  const { sections: groupedSections, layoutDebug } = buildDashboardSections(briefs);
   const hasVisibleStories = groupedSections.some((section) => section.stories.length > 0);
   const editionArticleCount = apiLayoutDebug?.savedEditionArticleCount ?? layoutDebug.savedEditionArticleCount;
   const editionImageCount = apiLayoutDebug?.articlesWithImageUrl ?? layoutDebug.articlesWithImageUrl;
@@ -208,8 +206,8 @@ export function DashboardFeed({
             data-layout-debug
             title="Dashboard layout debug"
           >
-            Edition {editionArticleCount} saved · Top {layoutDebug.topStoriesCount} · Watchlist{" "}
-            {layoutDebug.watchlistStoriesCount} · imageUrl {editionImageCount}
+            Edition {editionArticleCount} saved · Top {layoutDebug.topStoriesCount} · imageUrl{" "}
+            {editionImageCount}
           </span>
         </div>
         <p className="text-xs text-fin-subtle">Daily edition updates once per day.</p>
