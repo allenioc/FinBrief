@@ -1,5 +1,6 @@
 import type { Brief, BriefResponse } from "./types";
 import { MOCK_BRIEFS } from "./articles-data";
+import { DAILY_EDITION_ARTICLE_LIMIT } from "./news-constants";
 import { fromTopicSlug, toTopicSlug } from "./slug";
 
 const liveBriefCache = new Map<string, Brief>();
@@ -82,7 +83,7 @@ export async function fetchBriefsFromApi(query: string): Promise<BriefResponse |
     const params = new URLSearchParams({ q: query || "" });
     // Must match the dashboard client request exactly so both read/write the
     // same saved edition cache entry (the edition key includes the limit).
-    params.set("limit", "20");
+    params.set("limit", String(DAILY_EDITION_ARTICLE_LIMIT));
     params.set("page", "1");
     params.set("edition", dailyEditionKey());
     const localhostBase = `http://localhost:${process.env.PORT ?? "3000"}`;

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { BROAD_NEWS_QUERY, BROAD_FINANCE_QUERIES } from "@/lib/news-constants";
+import { BROAD_NEWS_QUERY, BROAD_FINANCE_QUERIES, DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
 
 const PREWARM_QUERIES = [
   BROAD_NEWS_QUERY,
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
   for (const query of PREWARM_QUERIES) {
     const params = new URLSearchParams();
     if (query) params.set("q", query);
-    params.set("limit", "24");
+    params.set("limit", String(DAILY_EDITION_ARTICLE_LIMIT));
     params.set("page", "1");
     params.set("edition", dailyEditionKey());
     const response = await fetch(`${baseUrl}/api/news?${params.toString()}`, {

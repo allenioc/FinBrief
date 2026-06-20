@@ -7,7 +7,7 @@ import {
 } from "@/lib/mock-refresh";
 import { formatLastUpdated } from "@/lib/date-format";
 import { friendlyEditionError } from "@/lib/user-messages";
-import { BROAD_NEWS_QUERY } from "@/lib/news-constants";
+import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
 import { buildDashboardSections } from "@/lib/dashboard-sections";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleCard } from "./ArticleCard";
@@ -67,7 +67,7 @@ export function DashboardFeed({
     const params = new URLSearchParams();
     if (!isDefaultFeed) params.set("q", activeQuery);
     params.set("timeRange", "week");
-    params.set("limit", "20");
+    params.set("limit", String(DAILY_EDITION_ARTICLE_LIMIT));
     params.set("page", "1");
     params.set("edition", dailyEditionKey());
     try {
@@ -137,7 +137,7 @@ export function DashboardFeed({
     const params = new URLSearchParams();
     if (!isDefaultFeed) params.set("q", activeQuery);
     params.set("timeRange", "week");
-    params.set("limit", "20");
+    params.set("limit", String(DAILY_EDITION_ARTICLE_LIMIT));
     params.set("page", String(nextPage));
     params.set("edition", dailyEditionKey());
     try {
@@ -179,7 +179,7 @@ export function DashboardFeed({
     };
   }, [isDefaultFeed, refreshFeed]);
 
-  const groupedSections = buildDashboardSections(briefs, watchlistItems, visibleCount);
+  const groupedSections = buildDashboardSections(briefs, watchlistItems);
   const hasVisibleStories = groupedSections.some((section) => section.stories.length > 0);
 
   return (

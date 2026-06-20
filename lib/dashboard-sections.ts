@@ -1,3 +1,7 @@
+import {
+  DASHBOARD_TOP_STORIES_MAX,
+  DASHBOARD_WATCHLIST_MAX,
+} from "./news-constants";
 import type { Brief, WatchlistItem } from "./types";
 
 const BROAD_INDEX_ETFS = new Set(["SPY", "QQQ", "VTI", "DIA"]);
@@ -62,31 +66,34 @@ export function areSimilarTitles(a: string, b: string): boolean {
   if (!left || !right) return false;
   if (left === right) return true;
 
-  const prefixLength = Math.min(40, left.length, right.length);
-  if (prefixLength >= 20) {
+  const prefixLength = Math.min(50, left.length, right.length);
+  if (prefixLength >= 30) {
     if (left.startsWith(right.slice(0, prefixLength)) || right.startsWith(left.slice(0, prefixLength))) {
       return true;
     }
   }
 
-  const wordsLeft = new Set(left.split(" ").filter((word) => word.length > 3));
-  const wordsRight = new Set(right.split(" ").filter((word) => word.length > 3));
+  const wordsLeft = new Set(left.split(" ").filter((word) => word.length > 4));
+  const wordsRight = new Set(right.split(" ").filter((word) => word.length > 4));
   if (wordsLeft.size === 0 || wordsRight.size === 0) return false;
 
   let overlap = 0;
   wordsLeft.forEach((word) => {
     if (wordsRight.has(word)) overlap += 1;
   });
-  return overlap / Math.min(wordsLeft.size, wordsRight.size) >= 0.75;
+  return overlap / Math.min(wordsLeft.size, wordsRight.size) >= 0.85;
 }
 
-export function isSameStory(a: Brief, b: Brief): boolean {
+export function isHardDuplicate(a: Brief, b: Brief): boolean {
   if (a.id === b.id) return true;
 
   const urlA = normalizeArticleUrl(a.originalUrl);
   const urlB = normalizeArticleUrl(b.originalUrl);
-  if (urlA && urlB && urlA === urlB) return true;
+  return Boolean(urlA && urlB && urlA === urlB);
+}
 
+export function isSameStory(a: Brief, b: Brief): boolean {
+  if (isHardDuplicate(a, b)) return true;
   return areSimilarTitles(a.headline, b.headline);
 }
 
@@ -95,6 +102,15 @@ export function filterUniqueStories(stories: Brief[], excluded: Brief[] = []): B
   for (const story of stories) {
     if (excluded.some((item) => isSameStory(story, item))) continue;
     if (kept.some((item) => isSameStory(story, item))) continue;
+    kept.push(story);
+  }
+  return kept;
+}
+
+function filterHardUniqueStories(stories: Brief[]): Brief[] {
+  const kept: Brief[] = [];
+  for (const story of stories) {
+    if (kept.some((item) => isHardDuplicate(story, item))) continue;
     kept.push(story);
   }
   return kept;
@@ -227,25 +243,28 @@ function withinWeek(iso: string, now: number): boolean {
   return ageMs <= 7 * 24 * 60 * 60 * 1000;
 }
 
+function rankStories(stories: Brief[]): Brief[] {
+  return [...stories].sort((a, b) => {
+    const scoreDelta = scoreTopStory(b) - scoreTopStory(a);
+    if (scoreDelta !== 0) return scoreDelta;
+    return publishedTime(b.publishedAt) - publishedTime(a.publishedAt);
+  });
+}
+
 export function buildDashboardSections(
   briefs: Brief[],
-  watchlistItems: WatchlistItem[],
-  visibleCount: number
+  watchlistItems: WatchlistItem[]
 ): DashboardSection[] {
   const now = Date.now();
-  const scoped = [...briefs]
-    .filter((brief) => withinWeek(brief.publishedAt, now))
-    .sort((a, b) => publishedTime(b.publishedAt) - publishedTime(a.publishedAt));
-  const pool = scoped.slice(0, visibleCount);
+  const scoped = briefs.filter((brief) => withinWeek(brief.publishedAt, now));
+  const pool = filterHardUniqueStories(rankStories(scoped));
 
-  const topStories = filterUniqueStories(
-    [...pool].sort((a, b) => scoreTopStory(b) - scoreTopStory(a))
-  ).slice(0, 4);
+  const topStories = pool.slice(0, DASHBOARD_TOP_STORIES_MAX);
 
   const watchlistStories = filterUniqueStories(
     pool.filter((brief) => isWatchlistRelated(brief, watchlistItems)),
     topStories
-  );
+  ).slice(0, DASHBOARD_WATCHLIST_MAX);
 
   const marketStories = filterUniqueStories(
     pool.filter((brief) => brief.articleType === "market news" || brief.articleType === "macro news"),

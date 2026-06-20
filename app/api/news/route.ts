@@ -6,6 +6,7 @@ import {
   type ProviderTimeRange,
 } from "@/lib/news-providers";
 import { providerArticlesToBriefs } from "@/lib/news-normalizer";
+import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
 import { searchBriefs } from "@/lib/briefs";
 import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
 import type { Brief } from "@/lib/types";
@@ -247,6 +248,9 @@ export async function GET(request: NextRequest) {
   const admin = isAdminRequest(request);
   const today = localDateKey();
   const queryKey = (query || "broad-business-finance").toLowerCase();
+  const isBroadDashboardEdition =
+    page === 1 && (queryKey === "broad-business-finance" || queryKey === BROAD_NEWS_QUERY);
+  const fetchLimit = isBroadDashboardEdition ? Math.max(limit, DAILY_EDITION_ARTICLE_LIMIT) : limit;
   const editionKey = `edition::${queryKey}::${timeRange}::${limit}::${page}`;
   const lastGoodKey = `lastgood::${queryKey}::${timeRange}`;
   const scopeKey = `${queryKey}::${timeRange}`;
@@ -386,7 +390,9 @@ export async function GET(request: NextRequest) {
   }
 
   // 3) Cache rules allow a live fetch: this is the only place providers are called.
-  const providerResponse = await fetchProviderNews(query, limit, page, timeRange);
+  const providerResponse = await fetchProviderNews(query, fetchLimit, page, timeRange, {
+    editionFetch: isBroadDashboardEdition,
+  });
   let payload = providerResponse
     ? (() => {
         const mapped = providerArticlesToBriefs({
@@ -401,9 +407,9 @@ export async function GET(request: NextRequest) {
         );
         const rangeBriefs = sortedBriefs.filter((item) => inTimeRange(item.publishedAt, timeRange));
         const rangeArticles = sortedArticles.filter((item) => inTimeRange(item.publishedAt, timeRange));
-        const start = (Math.max(1, page) - 1) * limit;
-        const pagedBriefs = rangeBriefs.slice(start, start + limit);
-        const pagedArticles = rangeArticles.slice(start, start + limit);
+        const start = (Math.max(1, page) - 1) * fetchLimit;
+        const pagedBriefs = rangeBriefs.slice(start, start + fetchLimit);
+        const pagedArticles = rangeArticles.slice(start, start + fetchLimit);
         return {
           query,
           provider: providerResponse.provider,
@@ -411,8 +417,8 @@ export async function GET(request: NextRequest) {
           fetchedAt: providerResponse.fetchedAt,
           articleCount: pagedBriefs.length,
           page,
-          limit,
-          hasMore: start + limit < rangeBriefs.length,
+          limit: fetchLimit,
+          hasMore: start + fetchLimit < rangeBriefs.length,
           totalAvailable: rangeBriefs.length,
           articles: pagedArticles,
           normalized: pagedArticles,
@@ -420,7 +426,7 @@ export async function GET(request: NextRequest) {
           errorMessage: providerResponse.errorMessage,
         } satisfies CachedPayload;
       })()
-    : toMockPayload(query, page, limit);
+    : toMockPayload(query, page, fetchLimit);
 
   const isSuccessfulLiveFetch =
     payload.provider !== "mock" && payload.provider !== "error" && payload.articleCount > 0;

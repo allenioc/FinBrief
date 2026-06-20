@@ -697,8 +697,8 @@ export function getProviderDebugStatuses(): ProviderDebugStatus[] {
   });
 }
 
-function resolveQueryBatch(query: string, page: number): string[] {
-  const perPage = 4;
+function resolveQueryBatch(query: string, page: number, batchSize = 4): string[] {
+  const perPage = batchSize;
   const normalized = query.trim().toLowerCase();
   if (normalized && normalized !== BROAD_NEWS_QUERY) {
     const directByPhrase = new Set<string>();
@@ -808,14 +808,22 @@ export async function fetchProviderNews(
   limit: number,
   page: number,
   timeRange: ProviderTimeRange = "week",
-  options?: { providerFilter?: ProviderName }
+  options?: { providerFilter?: ProviderName; editionFetch?: boolean }
 ): Promise<NewsProviderResponse | null> {
   const providers = configuredProviders().filter(
     (provider) => !options?.providerFilter || provider === options.providerFilter
   );
   if (providers.length === 0) return null;
-  const queryBatch = resolveQueryBatch(query, page);
-  const perQueryLimit = Math.max(4, Math.ceil((limit * 1.5) / Math.max(1, queryBatch.length)));
+  const normalizedQuery = query.trim().toLowerCase();
+  const isBroadEditionFetch =
+    Boolean(options?.editionFetch) &&
+    page === 1 &&
+    (!normalizedQuery || normalizedQuery === BROAD_NEWS_QUERY);
+  const queryBatch = resolveQueryBatch(query, page, isBroadEditionFetch ? 8 : 4);
+  const perQueryLimit = Math.max(
+    4,
+    Math.ceil(((isBroadEditionFetch ? limit * 2 : limit * 1.5) / Math.max(1, queryBatch.length)))
+  );
   const runBatch = async (batch: string[]): Promise<RunBatchResult> => {
     const statusByProvider = new Map<ProviderName, ProviderRunStatus>();
     for (const provider of providers) {
