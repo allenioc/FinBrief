@@ -220,9 +220,7 @@ export function DashboardFeed({
       ) : (
         <div className="space-y-10">
           {groupedSections.map((section) => {
-            const showEmptyWatchlist =
-              section.title === "Watchlist-related Stories" && section.stories.length === 0;
-            if (section.stories.length === 0 && !showEmptyWatchlist) return null;
+            if (section.stories.length === 0) return null;
 
             return (
               <section key={section.title} className="space-y-4">
@@ -230,28 +228,22 @@ export function DashboardFeed({
                   <h3 className="fin-section-title">{section.title}</h3>
                   <p className="text-sm text-fin-subtle">{section.subtitle}</p>
                 </div>
-                {showEmptyWatchlist ? (
-                  <p className="fin-panel py-8 text-center text-sm text-fin-subtle" role="status">
-                    {section.emptyMessage}
-                  </p>
-                ) : (
-                  <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-                    {section.stories.map((brief, index) => (
-                      <ArticleCard
-                        key={`${brief.id}-${toTopicSlug(section.title)}`}
-                        article={brief}
-                        variant={
-                          section.title === "Top Stories" && index === 0
-                            ? "hero"
-                            : section.title === "Top Stories"
-                              ? "standard"
-                              : "compact"
-                        }
-                        priorityImage={section.title === "Top Stories" && index === 0}
-                      />
-                    ))}
-                  </div>
-                )}
+                <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                  {section.stories.map((brief, index) => (
+                    <ArticleCard
+                      key={`${brief.id}-${toTopicSlug(section.title)}`}
+                      article={brief}
+                      variant={
+                        section.title === "Top Stories" && index === 0
+                          ? "hero"
+                          : section.title === "Top Stories"
+                            ? "standard"
+                            : "compact"
+                      }
+                      priorityImage={section.title === "Top Stories" && index === 0}
+                    />
+                  ))}
+                </div>
               </section>
             );
           })}

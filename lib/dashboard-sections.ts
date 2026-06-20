@@ -289,18 +289,14 @@ export function buildDashboardSections(
       stories: marketStories,
     },
     {
-      title: "Watchlist-related Stories",
-      subtitle: "Stories tied to assets you follow",
-      stories: watchlistStories,
-      emptyMessage:
-        watchlistStories.length === 0
-          ? "No watchlist-specific stories in today's edition."
-          : undefined,
-    },
-    {
       title: "Recommended Next",
       subtitle: "Additional stories worth reading",
       stories: recommendedStories,
+    },
+    {
+      title: "Watchlist Stories",
+      subtitle: "Stories tied to assets you follow",
+      stories: watchlistStories,
     },
   ];
 }

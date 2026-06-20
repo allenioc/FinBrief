@@ -5,7 +5,7 @@ export const DAILY_EDITION_ARTICLE_LIMIT = 20;
 
 /** Dashboard section caps (client-side layout only). */
 export const DASHBOARD_TOP_STORIES_MAX = 12;
-export const DASHBOARD_WATCHLIST_MAX = 5;
+export const DASHBOARD_WATCHLIST_MAX = 3;
 
 export const BROAD_FINANCE_QUERIES = [
   "business",
