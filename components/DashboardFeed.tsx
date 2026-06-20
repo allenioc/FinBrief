@@ -8,6 +8,7 @@ import {
 import { formatLastUpdated } from "@/lib/date-format";
 import { friendlyEditionError } from "@/lib/user-messages";
 import { BROAD_NEWS_QUERY } from "@/lib/news-constants";
+import { buildDashboardSections } from "@/lib/dashboard-sections";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleCard } from "./ArticleCard";
 import { useWatchlist } from "./WatchlistProvider";
@@ -178,45 +179,8 @@ export function DashboardFeed({
     };
   }, [isDefaultFeed, refreshFeed]);
 
-  const watchlistSymbols = watchlistItems.map((item) => item.symbol.toLowerCase());
-  const sortedBriefs = [...briefs].sort((a, b) => {
-    const at = new Date(a.publishedAt).getTime();
-    const bt = new Date(b.publishedAt).getTime();
-    const safeA = Number.isFinite(at) ? at : 0;
-    const safeB = Number.isFinite(bt) ? bt : 0;
-    return safeB - safeA;
-  });
-  const now = Date.now();
-  const scoped = sortedBriefs.filter((brief) => {
-    const published = new Date(brief.publishedAt).getTime();
-    if (!Number.isFinite(published)) return true;
-    const ageMs = now - published;
-    if (ageMs < 0) return true;
-    return ageMs <= 7 * 24 * 60 * 60 * 1000;
-  });
-  const displayed = scoped.slice(0, visibleCount);
-  const topStories = displayed.slice(0, 4);
-  const marketStories = displayed.filter(
-    (brief) => brief.articleType === "market news" || brief.articleType === "macro news"
-  );
-  const watchlistStories = displayed.filter((brief) => {
-    const assets = [brief.ticker, brief.topic, ...brief.keyAffectedAssets].map((value) => value.toLowerCase());
-    return watchlistSymbols.some((symbol) => assets.some((asset) => asset.includes(symbol)));
-  });
-  const recommendedStories = displayed.filter(
-    (brief) => !topStories.some((top) => top.id === brief.id) && !watchlistStories.some((item) => item.id === brief.id)
-  );
-
-  const groupedSections: Array<{ title: string; subtitle: string; stories: Brief[] }> = [
-    { title: "Top Stories", subtitle: "Most relevant stories right now", stories: topStories },
-    { title: "Latest Market Stories", subtitle: "Macro and index-focused context", stories: marketStories },
-    {
-      title: "Watchlist-related Stories",
-      subtitle: "Stories tied to assets you follow",
-      stories: watchlistStories,
-    },
-    { title: "Recommended Next", subtitle: "Additional stories worth reading", stories: recommendedStories },
-  ];
+  const groupedSections = buildDashboardSections(briefs, watchlistItems, visibleCount);
+  const hasVisibleStories = groupedSections.some((section) => section.stories.length > 0);
 
   return (
     <div className="space-y-6">
@@ -245,7 +209,7 @@ export function DashboardFeed({
         <p className="fin-panel py-12 text-center text-sm text-fin-subtle">
           Loading stories...
         </p>
-      ) : displayed.length === 0 ? (
+      ) : !hasVisibleStories ? (
         <div className="fin-panel py-12 text-center">
           <p className="text-sm font-medium text-fin-navy">No stories in this edition yet</p>
           <p className="mt-2 text-sm text-fin-subtle">
@@ -255,32 +219,42 @@ export function DashboardFeed({
         </div>
       ) : (
         <div className="space-y-10">
-          {groupedSections.map((section) =>
-            section.stories.length > 0 ? (
+          {groupedSections.map((section) => {
+            const showEmptyWatchlist =
+              section.title === "Watchlist-related Stories" && section.stories.length === 0;
+            if (section.stories.length === 0 && !showEmptyWatchlist) return null;
+
+            return (
               <section key={section.title} className="space-y-4">
                 <div>
                   <h3 className="fin-section-title">{section.title}</h3>
                   <p className="text-sm text-fin-subtle">{section.subtitle}</p>
                 </div>
-                <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-                  {section.stories.map((brief, index) => (
-                    <ArticleCard
-                      key={`${brief.id}-${toTopicSlug(section.title)}`}
-                      article={brief}
-                      variant={
-                        section.title === "Top Stories" && index === 0
-                          ? "hero"
-                          : section.title === "Top Stories"
-                            ? "standard"
-                            : "compact"
-                      }
-                      priorityImage={section.title === "Top Stories" && index === 0}
-                    />
-                  ))}
-                </div>
+                {showEmptyWatchlist ? (
+                  <p className="fin-panel py-8 text-center text-sm text-fin-subtle" role="status">
+                    {section.emptyMessage}
+                  </p>
+                ) : (
+                  <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                    {section.stories.map((brief, index) => (
+                      <ArticleCard
+                        key={`${brief.id}-${toTopicSlug(section.title)}`}
+                        article={brief}
+                        variant={
+                          section.title === "Top Stories" && index === 0
+                            ? "hero"
+                            : section.title === "Top Stories"
+                              ? "standard"
+                              : "compact"
+                        }
+                        priorityImage={section.title === "Top Stories" && index === 0}
+                      />
+                    ))}
+                  </div>
+                )}
               </section>
-            ) : null
-          )}
+            );
+          })}
         </div>
       )}
 
