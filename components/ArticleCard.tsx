@@ -6,6 +6,7 @@ import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
 import { formatDateTime, formatPublishedTimeLabel } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
+import { resolveFallbackImageId, enrichBriefImage } from "@/lib/article-image";
 import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
 import { AssetTags } from "./AssetTags";
@@ -25,6 +26,7 @@ export function ArticleCard({
   priorityImage?: boolean;
 }) {
   const fallbackLabel = article.ticker !== "—" ? article.ticker : article.topic;
+  const fallbackImageId = resolveFallbackImageId(article);
   const isHero = variant === "hero";
   const isCompact = variant === "compact";
   const watchlistItem = watchlistItemFromBrief(article);
@@ -40,7 +42,10 @@ export function ArticleCard({
   // depending on server-side caches (which are per-instance on Vercel).
   const stashArticle = () => {
     try {
-      sessionStorage.setItem(`finbrief-article-${article.id}`, JSON.stringify(article));
+      sessionStorage.setItem(
+        `finbrief-article-${article.id}`,
+        JSON.stringify(enrichBriefImage({ ...article, fallbackImageId }))
+      );
     } catch {
       // Storage may be unavailable (private mode); the brief page has API fallbacks.
     }
@@ -59,7 +64,9 @@ export function ArticleCard({
       >
         <div className={`absolute ${imageInset} overflow-hidden rounded-image`}>
           <ArticleThumbnail
+            articleId={article.id}
             src={article.imageUrl}
+            fallbackImageId={fallbackImageId}
             alt={article.imageAlt || article.headline}
             fallbackLabel={fallbackLabel}
             fallbackSub={article.source}

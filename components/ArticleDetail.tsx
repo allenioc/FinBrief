@@ -5,6 +5,7 @@ import { parseThirtySecondBullets } from "@/lib/article-analysis";
 import { formatDateTime } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
+import { resolveFallbackImageId } from "@/lib/article-image";
 import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
 import { AssetTags } from "./AssetTags";
@@ -46,6 +47,7 @@ function Section({
 
 export function ArticleDetail({ article }: { article: Brief }) {
   const fallbackLabel = article.ticker !== "—" ? article.ticker : article.topic;
+  const fallbackImageId = resolveFallbackImageId(article);
   const watchlistItem = watchlistItemFromBrief(article);
   const quickBullets = parseThirtySecondBullets(article.thirtySecondVersion);
 
@@ -55,10 +57,13 @@ export function ArticleDetail({ article }: { article: Brief }) {
         <div className="relative aspect-[2/1] w-full min-h-[220px] sm:min-h-[320px]">
           <div className="absolute inset-4 overflow-hidden rounded-image sm:inset-6">
             <ArticleThumbnail
+              articleId={article.id}
               src={article.imageUrl}
+              fallbackImageId={fallbackImageId}
               alt={article.imageAlt || article.headline}
               fallbackLabel={fallbackLabel}
               fallbackSub={`${article.source} · ${article.topic}`}
+              fallbackKind={article.articleType}
               priority
               sizes="100vw"
               className="rounded-image object-cover"

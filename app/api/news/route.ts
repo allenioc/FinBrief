@@ -8,6 +8,7 @@ import {
 import { providerArticlesToBriefs } from "@/lib/news-normalizer";
 import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
 import { searchBriefs } from "@/lib/briefs";
+import { enrichBriefImage } from "@/lib/article-image";
 import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
 import type { Brief } from "@/lib/types";
 
@@ -114,7 +115,7 @@ function withDebugFields(payload: CachedPayload, fields: Omit<CacheDebugFields, 
 function toMockPayload(query: string, page: number, limit: number): CachedPayload {
   const fallback = query.trim() ? searchBriefs(query) : MOCK_BRIEFS;
   const start = (Math.max(1, page) - 1) * limit;
-  const pageItems = fallback.slice(start, start + limit);
+  const pageItems = fallback.slice(start, start + limit).map(enrichBriefImage);
   return {
     query,
     provider: "mock",
@@ -132,6 +133,7 @@ function toMockPayload(query: string, page: number, limit: number): CachedPayloa
       author: brief.author,
       publishedAt: brief.publishedAt,
       imageUrl: brief.imageUrl,
+      fallbackImageId: brief.fallbackImageId,
       originalUrl: brief.originalUrl,
       excerpt: brief.excerpt,
       relatedTickerOrTopic: brief.ticker !== "—" ? brief.ticker : brief.topic,
@@ -169,6 +171,7 @@ function toMockPayload(query: string, page: number, limit: number): CachedPayloa
       author: brief.author,
       publishedAt: brief.publishedAt,
       imageUrl: brief.imageUrl,
+      fallbackImageId: brief.fallbackImageId,
       originalUrl: brief.originalUrl,
       excerpt: brief.excerpt,
       relatedTickerOrTopic: brief.ticker !== "—" ? brief.ticker : brief.topic,
@@ -227,20 +230,32 @@ export async function GET(request: NextRequest) {
   if (articleId) {
     const indexed = await cacheGet<Brief>(`article::${articleId}`);
     if (indexed) {
-      return NextResponse.json({ found: true, source: `index:${indexed.tier}`, article: indexed.value });
+      return NextResponse.json({
+        found: true,
+        source: `index:${indexed.tier}`,
+        article: enrichBriefImage(indexed.value),
+      });
     }
     const broadScope = "broad-business-finance";
     for (const pageNum of [1, 2, 3]) {
       const record = await cacheGet<EditionRecord>(`edition::${broadScope}::week::20::${pageNum}`);
       const match = record?.value.payload.briefs.find((brief) => brief.id === articleId);
       if (match && record) {
-        return NextResponse.json({ found: true, source: `edition:${record.tier}`, article: match });
+        return NextResponse.json({
+          found: true,
+          source: `edition:${record.tier}`,
+          article: enrichBriefImage(match),
+        });
       }
     }
     const lastGood = await cacheGet<LastGoodRecord>(`lastgood::${broadScope}::week`);
     const staleMatch = lastGood?.value.payload.briefs.find((brief) => brief.id === articleId);
     if (staleMatch && lastGood) {
-      return NextResponse.json({ found: true, source: `lastgood:${lastGood.tier}`, article: staleMatch });
+      return NextResponse.json({
+        found: true,
+        source: `lastgood:${lastGood.tier}`,
+        article: enrichBriefImage(staleMatch),
+      });
     }
     return NextResponse.json({ found: false }, { status: 404 });
   }

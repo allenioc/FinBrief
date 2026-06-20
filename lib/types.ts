@@ -71,6 +71,8 @@ export interface Brief {
   publishedAt: string;
   imageUrl: string;
   imageAlt: string;
+  /** Stable FinBrief fallback palette id when provider image is unavailable. */
+  fallbackImageId?: string;
   originalUrl: string;
   excerpt: string;
   summary: string;

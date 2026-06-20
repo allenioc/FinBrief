@@ -7,11 +7,13 @@
  * the article from sessionStorage or the API. Never calls live providers.
  */
 import type { Brief } from "./types";
+import { enrichBriefImage } from "./article-image";
 import { cacheGet } from "./news-cache";
 import { MOCK_BRIEFS } from "./articles-data";
 
 export async function findArticleLocally(id: string): Promise<Brief | null> {
   const indexed = await cacheGet<Brief>(`article::${id}`);
-  if (indexed) return indexed.value;
-  return MOCK_BRIEFS.find((brief) => brief.id === id) ?? null;
+  if (indexed) return enrichBriefImage(indexed.value);
+  const mock = MOCK_BRIEFS.find((brief) => brief.id === id);
+  return mock ? enrichBriefImage(mock) : null;
 }

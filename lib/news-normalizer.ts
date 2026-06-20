@@ -12,6 +12,7 @@ import {
   inferArticleType,
   inferDisplayTopic,
 } from "./article-analysis";
+import { enrichBriefImage, computeFallbackImageId } from "./article-image";
 import { toTopicSlug } from "./slug";
 import type { ProviderArticle } from "./news-providers";
 import type { Brief, MarketImpact, Sentiment } from "./types";
@@ -23,6 +24,7 @@ export interface NormalizedNewsArticle {
   author?: string;
   publishedAt: string;
   imageUrl?: string;
+  fallbackImageId?: string;
   originalUrl: string;
   excerpt: string;
   relatedTickerOrTopic: string;
@@ -111,6 +113,7 @@ export function normalizeProviderArticles(input: {
     const marketImpact = estimateMarketImpact(analysisText);
     const keyTerms = extractKeyTerms(analysisText);
     const excerpt = article.excerpt?.trim() || "No summary available from provider.";
+    const mappedArticleType = mapArticleType(type);
 
     return {
       id: article.id,
@@ -119,6 +122,12 @@ export function normalizeProviderArticles(input: {
       author: article.author,
       publishedAt: article.publishedAt,
       imageUrl: article.imageUrl,
+      fallbackImageId: computeFallbackImageId({
+        id: article.id,
+        originalUrl: article.originalUrl,
+        source: article.source,
+        articleType: mappedArticleType,
+      }),
       originalUrl: article.originalUrl,
       excerpt,
       relatedTickerOrTopic: topic,
@@ -170,13 +179,21 @@ export function normalizeProviderArticles(input: {
 }
 
 export function normalizedToBrief(article: NormalizedNewsArticle): Brief {
-  return {
+  return enrichBriefImage({
     id: article.id,
     headline: article.headline,
     source: article.source,
     author: article.author,
     publishedAt: article.publishedAt,
     imageUrl: article.imageUrl ?? "",
+    fallbackImageId:
+      article.fallbackImageId ??
+      computeFallbackImageId({
+        id: article.id,
+        originalUrl: article.originalUrl,
+        source: article.source,
+        articleType: mapArticleType(article.articleType),
+      }),
     imageAlt: article.headline
       ? `${article.headline} thumbnail`
       : `${article.relatedTickerOrTopic} market-related article image`,
@@ -214,7 +231,7 @@ export function normalizedToBrief(article: NormalizedNewsArticle): Brief {
       kind: "topic",
     })),
     sourceLinks: [{ name: article.source, url: article.originalUrl }],
-  };
+  });
 }
 
 export function providerArticlesToBriefs(params: {

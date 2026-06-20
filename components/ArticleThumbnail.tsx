@@ -3,14 +3,21 @@
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  gradientForFallbackImage,
+  readCachedImageResolution,
+  writeCachedImageResolution,
+} from "@/lib/article-image";
+import {
   isDisplayableRemoteImage,
   isOptimizableRemoteImage,
 } from "@/lib/image-remote-hosts";
 import type { ArticleType } from "@/lib/types";
 
 interface ArticleThumbnailProps {
+  articleId: string;
   src: string;
   alt: string;
+  fallbackImageId?: string;
   fallbackLabel: string;
   fallbackSub?: string;
   fallbackTitle?: string;
@@ -23,19 +30,6 @@ interface ArticleThumbnailProps {
 type LoadState = "loading" | "loaded" | "fallback";
 
 const FALLBACK_TIMEOUT_MS = 2800;
-
-function gradientClass(kind?: ArticleType): string {
-  if (kind === "macro news" || kind === "market news") {
-    return "bg-gradient-to-br from-slate-100 via-sky-100 to-blue-200";
-  }
-  if (kind === "ETF/index news") {
-    return "bg-gradient-to-br from-indigo-100 via-blue-100 to-cyan-100";
-  }
-  if (kind === "sector news") {
-    return "bg-gradient-to-br from-emerald-100 via-cyan-50 to-blue-100";
-  }
-  return "bg-gradient-to-br from-fin-brand-soft via-fin-muted to-fin-bg";
-}
 
 function FallbackVisual({
   alt,
@@ -70,8 +64,10 @@ function FallbackVisual({
 }
 
 export function ArticleThumbnail({
+  articleId,
   src,
   alt,
+  fallbackImageId,
   fallbackLabel,
   fallbackSub,
   fallbackTitle,
@@ -84,9 +80,13 @@ export function ArticleThumbnail({
   const timerRef = useRef<number | null>(null);
   const hasSetFallback = useRef(false);
   const trimmedSrc = src?.trim() ?? "";
+  const stableFallbackId = fallbackImageId || articleId;
+  const stableGradient = useMemo(
+    () => gradientForFallbackImage(stableFallbackId, fallbackKind),
+    [stableFallbackId, fallbackKind]
+  );
   const canDisplay = isDisplayableRemoteImage(trimmedSrc);
   const useNextImage = canDisplay && isOptimizableRemoteImage(trimmedSrc);
-  const stableGradient = useMemo(() => gradientClass(fallbackKind), [fallbackKind]);
   const loadingClass = `${className} transition-opacity duration-300 ${
     state === "loaded" ? "opacity-100" : "opacity-0"
   }`;
@@ -95,7 +95,8 @@ export function ArticleThumbnail({
     if (hasSetFallback.current) return;
     hasSetFallback.current = true;
     setState("fallback");
-  }, []);
+    writeCachedImageResolution(articleId, { mode: "fallback" });
+  }, [articleId]);
 
   const markLoaded = useCallback(() => {
     if (timerRef.current) {
@@ -104,8 +105,9 @@ export function ArticleThumbnail({
     }
     if (!hasSetFallback.current) {
       setState("loaded");
+      writeCachedImageResolution(articleId, { mode: "provider", imageUrl: trimmedSrc });
     }
-  }, []);
+  }, [articleId, trimmedSrc]);
 
   const handleImageLoad = useCallback(
     (naturalWidth: number, naturalHeight: number) => {
@@ -120,10 +122,27 @@ export function ArticleThumbnail({
 
   useEffect(() => {
     hasSetFallback.current = false;
-    if (!canDisplay) {
+
+    const cached = readCachedImageResolution(articleId);
+    if (cached?.mode === "fallback") {
       setState("fallback");
+      hasSetFallback.current = true;
       return;
     }
+    if (cached?.mode === "provider" && cached.imageUrl && cached.imageUrl !== trimmedSrc) {
+      writeCachedImageResolution(articleId, { mode: "fallback" });
+      setState("fallback");
+      hasSetFallback.current = true;
+      return;
+    }
+
+    if (!canDisplay) {
+      setState("fallback");
+      hasSetFallback.current = true;
+      writeCachedImageResolution(articleId, { mode: "fallback" });
+      return;
+    }
+
     setState("loading");
     if (timerRef.current) {
       window.clearTimeout(timerRef.current);
@@ -136,7 +155,7 @@ export function ArticleThumbnail({
         timerRef.current = null;
       }
     };
-  }, [canDisplay, showFallback, trimmedSrc]);
+  }, [articleId, canDisplay, showFallback, trimmedSrc]);
 
   if (state === "fallback") {
     return (

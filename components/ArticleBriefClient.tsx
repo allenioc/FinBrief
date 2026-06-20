@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
+import { enrichBriefImage } from "@/lib/article-image";
 import { toTopicSlug } from "@/lib/slug";
 import { ArticleDetail } from "./ArticleDetail";
 
@@ -33,7 +34,7 @@ export function ArticleBriefClient({
 
     const finish = (found: Brief | null) => {
       if (cancelled) return;
-      if (found) setArticle(found);
+      if (found) setArticle(enrichBriefImage(found));
       setResolved(true);
     };
 
