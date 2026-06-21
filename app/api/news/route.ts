@@ -10,6 +10,7 @@ import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-consta
 import { searchBriefs } from "@/lib/briefs";
 import { enrichBriefImage, countArticlesWithImageUrl } from "@/lib/article-image";
 import { filterBriefsForTopic } from "@/lib/topic-stories";
+import { isLiveEditionPayload } from "@/lib/daily-edition";
 import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
 import type { Brief } from "@/lib/types";
 
@@ -159,7 +160,7 @@ async function loadBroadSavedEdition(
   if (
     savedEdition &&
     savedEdition.value.editionDate === today &&
-    savedEdition.value.payload.articleCount > 0
+    isLiveEditionPayload(savedEdition.value.payload)
   ) {
     return {
       payload: savedEdition.value.payload,
@@ -167,10 +168,10 @@ async function loadBroadSavedEdition(
     };
   }
   const lastGood = await cacheGet<LastGoodRecord>(lastGoodKey);
-  if (lastGood && lastGood.value.payload.articleCount > 0) {
+  if (lastGood && isLiveEditionPayload(lastGood.value.payload)) {
     return { payload: lastGood.value.payload, fetchedAt: lastGood.value.fetchedAt };
   }
-  if (savedEdition && savedEdition.value.payload.articleCount > 0) {
+  if (savedEdition && isLiveEditionPayload(savedEdition.value.payload)) {
     return {
       payload: savedEdition.value.payload,
       fetchedAt: savedEdition.value.payload.fetchedAt,
@@ -417,11 +418,11 @@ export async function GET(request: NextRequest) {
   if (!adminRefresh) {
     const savedEdition = await cacheGet<EditionRecord>(editionKey);
 
-    // 1) Saved edition for today: serve it, never touch providers.
+    // 1) Saved live edition for today: serve it, never touch providers.
     if (
       savedEdition &&
       savedEdition.value.editionDate === today &&
-      savedEdition.value.payload.articleCount > 0
+      isLiveEditionPayload(savedEdition.value.payload)
     ) {
       return NextResponse.json(
         withDebugFields(savedEdition.value.payload, {
@@ -438,7 +439,9 @@ export async function GET(request: NextRequest) {
       ? "no_saved_edition"
       : savedEdition.value.editionDate !== today
         ? "edition_date_changed_and_today_not_fetched_yet"
-        : "saved_edition_has_zero_stories";
+        : !isLiveEditionPayload(savedEdition.value.payload)
+          ? "saved_edition_not_live_retry_allowed"
+          : "saved_edition_has_zero_stories";
 
     // 2) Recent provider failure: serve the newest saved data instead of retrying.
     const retryAt = failureCooldownByScope.get(scopeKey) ?? 0;
@@ -446,9 +449,9 @@ export async function GET(request: NextRequest) {
       const reasonSkipped = `recent_provider_failure_retry_in_${Math.ceil((retryAt - Date.now()) / 1000)}s`;
       const lastGood = await cacheGet<LastGoodRecord>(lastGoodKey);
       const fallback =
-        lastGood && lastGood.value.payload.articleCount > 0
+        lastGood && isLiveEditionPayload(lastGood.value.payload)
           ? { payload: lastGood.value.payload, tier: lastGood.tier, fetchedAt: lastGood.value.fetchedAt }
-          : savedEdition && savedEdition.value.payload.articleCount > 0
+          : savedEdition && isLiveEditionPayload(savedEdition.value.payload)
             ? {
                 payload: savedEdition.value.payload,
                 tier: savedEdition.tier,
@@ -552,8 +555,7 @@ export async function GET(request: NextRequest) {
       })()
     : toMockPayload(query, page, fetchLimit);
 
-  const isSuccessfulLiveFetch =
-    payload.provider !== "mock" && payload.provider !== "error" && payload.articleCount > 0;
+  const isSuccessfulLiveFetch = isLiveEditionPayload(payload);
 
   let cacheStatus: string;
   let lastSuccessfulFetchedAt: string | null = null;
@@ -582,7 +584,7 @@ export async function GET(request: NextRequest) {
       failureCooldownByScope.set(scopeKey, Date.now() + FAILURE_RETRY_COOLDOWN_MS);
     }
     const lastGood = await cacheGet<LastGoodRecord>(lastGoodKey);
-    if (lastGood && lastGood.value.payload.articleCount > 0) {
+    if (lastGood && isLiveEditionPayload(lastGood.value.payload)) {
       lastSuccessfulFetchedAt = lastGood.value.fetchedAt;
       payload = {
         ...lastGood.value.payload,

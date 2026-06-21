@@ -12,6 +12,7 @@ import {
 import type { Brief } from "@/lib/types";
 import { enrichBriefImage, countArticlesWithImageUrl } from "@/lib/article-image";
 import { DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
+import { shouldUpgradeEdition } from "@/lib/daily-edition";
 import {
   dailyEditionDateKey,
   dailyEditionRequestKey,
@@ -58,7 +59,8 @@ function snapshotFromBriefs(
   source: EditionDataSource,
   fetchedAt: string,
   hasMore: boolean,
-  cacheStatus?: string
+  cacheStatus?: string,
+  provider?: string
 ): DailyEditionSnapshot {
   const enriched = enrichBriefs(briefs);
   return {
@@ -70,6 +72,7 @@ function snapshotFromBriefs(
     articlesWithImageUrl: countArticlesWithImageUrl(enriched),
     source,
     cacheStatus,
+    provider,
   };
 }
 
@@ -201,6 +204,7 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
           savedEditionArticleCount?: number;
           articlesWithImageUrl?: number;
           cacheStatus?: string;
+          provider?: string;
         };
         const apiBriefs = enrichBriefs(payload.briefs ?? []);
         if (apiBriefs.length === 0 && briefsRef.current.length > 0) {
@@ -212,17 +216,27 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
         }
         if (apiBriefs.length === 0) return;
 
+        const currentSnapshot = memorySnapshot;
         const prevSig = idsSignature(briefsRef.current);
         const nextSig = idsSignature(apiBriefs);
+        const upgrade = shouldUpgradeEdition({
+          currentBriefIds: prevSig,
+          nextBriefIds: nextSig,
+          currentCacheStatus: currentSnapshot?.cacheStatus,
+          currentProvider: currentSnapshot?.provider,
+          nextCacheStatus: payload.cacheStatus,
+          nextProvider: payload.provider,
+        });
         const snapshot = snapshotFromBriefs(
           apiBriefs,
           "daily_edition",
           payload.fetchedAt ?? new Date().toISOString(),
           Boolean(payload.hasMore),
-          payload.cacheStatus
+          payload.cacheStatus,
+          payload.provider
         );
         bootstrappedRef.current = true;
-        if (prevSig !== nextSig || briefsRef.current.length === 0) {
+        if (upgrade) {
           commitSnapshot(snapshot);
         } else {
           setDebug({
@@ -274,9 +288,8 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
   }, []);
 
   useEffect(() => {
-    if (!bootstrappedRef.current) {
-      void syncEdition();
-    }
+    const hasCachedEdition = bootstrappedRef.current && briefsRef.current.length > 0;
+    void syncEdition({ background: hasCachedEdition });
   }, [syncEdition]);
 
   useEffect(() => {

@@ -7,7 +7,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 };
 
 export function isLiveProvider(provider?: string | null): boolean {
-  return Boolean(provider && provider !== "mock");
+  return Boolean(provider && provider !== "mock" && provider !== "error");
 }
 
 export function formatProviderLabel(provider?: string | null): string {

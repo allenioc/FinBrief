@@ -63,10 +63,7 @@ export async function getBriefs(query: string): Promise<Brief[]> {
     if (briefs.length > 0) {
       cacheBriefs(briefs);
     }
-    if (api.provider && api.provider !== "mock") {
-      return query.trim() ? filterBriefsForTopic(briefs, query) : briefs;
-    }
-    if (briefs.length > 0) {
+    if (api.provider && api.provider !== "mock" && api.provider !== "error") {
       return query.trim() ? filterBriefsForTopic(briefs, query) : briefs;
     }
   }

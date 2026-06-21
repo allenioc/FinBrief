@@ -11,6 +11,7 @@ export type DailyEditionSnapshot = {
   articlesWithImageUrl: number;
   source: EditionDataSource;
   cacheStatus?: string;
+  provider?: string;
 };
 
 const SESSION_PREFIX = "finbrief-daily-edition";
