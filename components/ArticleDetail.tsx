@@ -6,6 +6,7 @@ import { formatDateTime } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
 import { enrichBriefImage } from "@/lib/article-image";
+import { enrichArticleCopy } from "@/lib/article-analysis";
 import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
 import { AssetTags } from "./AssetTags";
@@ -46,12 +47,12 @@ function Section({
 }
 
 export function ArticleDetail({ article }: { article: Brief }) {
-  const enriched = enrichBriefImage(article);
+  const enriched = enrichArticleCopy(enrichBriefImage(article));
   const fallbackLabel = enriched.ticker !== "—" ? enriched.ticker : enriched.topic;
   const fallbackImageId = enriched.fallbackImageId;
   const imageDisplay = enriched.imageDisplay;
   const watchlistItem = watchlistItemFromBrief(article);
-  const quickBullets = parseThirtySecondBullets(article.thirtySecondVersion);
+  const quickBullets = parseThirtySecondBullets(enriched.thirtySecondVersion);
 
   return (
     <div className="space-y-8">
@@ -139,7 +140,7 @@ export function ArticleDetail({ article }: { article: Brief }) {
       </article>
 
       <blockquote className="fin-panel mx-auto max-w-article border-l-4 border-l-fin-brand italic text-fin-subtle">
-        <p className="text-base leading-relaxed">&ldquo;{article.excerpt}&rdquo;</p>
+        <p className="text-base leading-relaxed">&ldquo;{enriched.excerpt}&rdquo;</p>
         <footer className="mt-2 text-xs not-italic text-fin-subtle">
           Short excerpt from {article.source} — not the full article
         </footer>
@@ -148,7 +149,7 @@ export function ArticleDetail({ article }: { article: Brief }) {
       <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="space-y-6 fin-prose mx-auto max-w-full xl:max-w-none">
           <Section title="FinBrief summary" variant="highlight">
-            <p>{article.summary}</p>
+            <p>{enriched.summary}</p>
             <div className="mt-5 rounded-2xl bg-fin-brand-soft/50 p-5 not-italic">
               <p className="fin-label text-fin-brand">The 30-second version</p>
               <ul className="mt-3 list-disc space-y-2 pl-5 text-base font-medium text-fin-navy">
@@ -159,7 +160,7 @@ export function ArticleDetail({ article }: { article: Brief }) {
             </div>
           </Section>
 
-          <Section title="Why it matters">{article.whyItMatters}</Section>
+          <Section title="Why it matters">{enriched.whyItMatters}</Section>
           <Section title="Who is affected?">{article.whoIsAffected}</Section>
 
           {article.originalUrl && (

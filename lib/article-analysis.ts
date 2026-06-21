@@ -1,4 +1,5 @@
-import type { MarketImpact, Sentiment } from "./types";
+import type { Brief, MarketImpact, Sentiment } from "./types";
+import { isSecuritiesLegalNotice } from "./story-dedup";
 
 const POSITIVE_WORDS = [
   "beat",
@@ -195,8 +196,47 @@ function extractMentionedSubjects(headline: string, excerpt: string): string[] {
     }
   }
   const tickerMatches = text.match(/\b[A-Z]{2,5}\b/g) ?? [];
+  const tickerBlocklist = new Set([
+    "CEO",
+    "CFO",
+    "ETF",
+    "GDP",
+    "CPI",
+    "FED",
+    "USA",
+    "USD",
+    "AI",
+    "NEW",
+    "YORK",
+    "LAW",
+    "FIRM",
+    "LLP",
+    "INC",
+    "LLC",
+    "LTD",
+    "PLC",
+    "THE",
+    "FOR",
+    "AND",
+    "PR",
+    "WHY",
+    "JUN",
+    "JUL",
+    "AUG",
+    "SEP",
+    "OCT",
+    "NOV",
+    "DEC",
+    "NASDAQ",
+    "NYSE",
+    "CLASS",
+    "LEAD",
+    "HAVE",
+    "WITH",
+    "FROM",
+  ]);
   for (const ticker of tickerMatches) {
-    if (!["CEO", "CFO", "ETF", "GDP", "CPI", "FED", "USA", "USD", "AI"].includes(ticker)) {
+    if (!tickerBlocklist.has(ticker)) {
       subjects.add(ticker);
     }
   }
@@ -244,6 +284,14 @@ interface ArticlePreviewContext {
   themes: StoryTheme[];
 }
 
+function stripWireDateline(text: string): string {
+  return normalizeWhitespace(
+    text
+      .replace(/^[A-Z\s]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s*\/PRNewswire\/\s*--\s*/i, "")
+      .replace(/^Why:\s*/i, "")
+  );
+}
+
 function buildArticlePreviewContext(
   headline: string,
   excerpt: string,
@@ -251,7 +299,7 @@ function buildArticlePreviewContext(
   publishedAt?: string
 ): ArticlePreviewContext {
   const cleanedHeadline = headlineCore(headline);
-  const cleanedExcerpt = normalizeWhitespace(excerpt);
+  const cleanedExcerpt = stripWireDateline(normalizeWhitespace(excerpt));
   const sentences = splitSentences(cleanedExcerpt);
   const text = combinedText(cleanedHeadline, cleanedExcerpt);
   return {
@@ -608,4 +656,103 @@ export function buildEducationalSummary(headline: string, excerpt: string, query
 export function buildLongSummary(headline: string, excerpt: string, query: string): string {
   void query;
   return buildFinBriefSummary(headline, excerpt);
+}
+
+export interface SecuritiesNoticeDetails {
+  company: string;
+  tickers: string[];
+  lawFirm: string;
+  actionLabel: string;
+}
+
+export function parseSecuritiesLegalNotice(headline: string, excerpt: string): SecuritiesNoticeDetails {
+  const combined = `${headline} ${excerpt}`;
+  const tickers = new Set<string>();
+
+  for (const match of combined.matchAll(/\((?:NASDAQ|NYSE|AMEX):\s*([A-Z]{1,5})\)/gi)) {
+    tickers.add(match[1].toUpperCase());
+  }
+  const deadlineTicker = headline.match(/\b([A-Z]{2,5})\s+Deadline:/i);
+  if (deadlineTicker?.[1]) tickers.add(deadlineTicker[1].toUpperCase());
+
+  let company = "";
+  const companyPatterns = [
+    /Lead\s+(.+?)\s+Securities/i,
+    /Investors.*?Lead\s+(.+?)(?:\s+Securities|\.|$)/i,
+    /(?:stock of|shares of)\s+([A-Z][A-Za-z0-9&,.\s-]{2,60}?)(?:\s+\(|\.|,|$)/i,
+    /reminds\s+(?:purchasers|sellers|investors)[^,.]{0,80}?\s+([A-Z][A-Za-z0-9&,.\s-]{2,60}?)(?:\s+\(|\.|,|$)/i,
+  ];
+  for (const pattern of companyPatterns) {
+    const match = combined.match(pattern);
+    if (match?.[1]) {
+      company = normalizeWhitespace(match[1].replace(/\.$/, ""));
+      break;
+    }
+  }
+
+  const lawFirm = /rosen\s*law/i.test(combined) ? "Rosen Law Firm" : "A law firm";
+  const actionLabel = /lead plaintiff|class action|securities fraud|investor deadline/i.test(combined)
+    ? "securities class action notice"
+    : "investor legal notice";
+
+  return {
+    company:
+      company ||
+      (tickers.size > 0 ? `the company (${[...tickers].join(", ")})` : "the company named in the release"),
+    tickers: [...tickers],
+    lawFirm,
+    actionLabel,
+  };
+}
+
+function buildSecuritiesLegalSummary(
+  details: SecuritiesNoticeDetails,
+  source: string,
+  publishedAt?: string
+): string {
+  const tickerNote =
+    details.tickers.length > 0 ? ` (${details.tickers.join(", ")})` : "";
+  return [
+    `${details.lawFirm} published a ${details.actionLabel} on ${source || "a newswire"} regarding ${details.company}${tickerNote}.`,
+    "The release is promotional legal notice content inviting shareholders to learn about a potential lawsuit and lead-plaintiff deadlines.",
+    "It is not independent news reporting and does not mean a court has found wrongdoing.",
+    `FinBrief summarizes the notice${formatPublishedContext(publishedAt)}; read the original release for eligibility dates and filing details.`,
+  ].join(" ");
+}
+
+function buildSecuritiesLegalThirtySecond(details: SecuritiesNoticeDetails): string {
+  const tickerNote = details.tickers.length > 0 ? ` (${details.tickers.join(", ")})` : "";
+  return [
+    `• ${details.lawFirm} advertised a ${details.actionLabel} related to ${details.company}${tickerNote}.`,
+    "• These notices often follow stock price drops; they do not mean a lawsuit has already succeeded.",
+    "• Check the original PRNewswire release for lead-plaintiff deadlines and whether you may be affected.",
+  ].join("\n");
+}
+
+function buildSecuritiesLegalWhyItMatters(details: SecuritiesNoticeDetails): string {
+  return [
+    `Investors holding ${details.company}${details.tickers.length > 0 ? ` (${details.tickers.join(", ")})` : ""} may want to know about the advertised legal notice, but it is not the same as a court ruling or settlement.`,
+    "Securities lawsuit notices can create headline noise without immediately changing company fundamentals.",
+    "Treat this as legal marketing content until confirmed by court filings or independent reporting.",
+  ].join(" ");
+}
+
+function buildSecuritiesLegalExcerpt(details: SecuritiesNoticeDetails, source: string): string {
+  const tickerNote = details.tickers.length > 0 ? ` (${details.tickers.join(", ")})` : "";
+  return `${details.lawFirm} issued a ${details.actionLabel} on ${source || "PRNewswire"} about ${details.company}${tickerNote}. Open the source link for the full legal notice.`;
+}
+
+/** Rewrite boilerplate legal-notice copy for cards and article pages. */
+export function enrichArticleCopy(brief: Brief): Brief {
+  if (!isSecuritiesLegalNotice(brief)) return brief;
+
+  const details = parseSecuritiesLegalNotice(brief.headline, brief.excerpt);
+  return {
+    ...brief,
+    excerpt: buildSecuritiesLegalExcerpt(details, brief.source),
+    summary: buildSecuritiesLegalSummary(details, brief.source, brief.publishedAt),
+    thirtySecondVersion: buildSecuritiesLegalThirtySecond(details),
+    whatHappened: buildSecuritiesLegalExcerpt(details, brief.source),
+    whyItMatters: buildSecuritiesLegalWhyItMatters(details),
+  };
 }

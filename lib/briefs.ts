@@ -1,6 +1,7 @@
 import type { Brief, BriefResponse } from "./types";
 import { MOCK_BRIEFS } from "./articles-data";
 import { DAILY_EDITION_ARTICLE_LIMIT } from "./news-constants";
+import { enrichArticleCopy } from "./article-analysis";
 import { enrichBriefImage } from "./article-image";
 import { fromTopicSlug } from "./slug";
 import { filterBriefsForTopic } from "./topic-stories";
@@ -24,7 +25,7 @@ function isEnrichedBrief(brief: Brief): boolean {
 }
 
 function normalizeBriefs(briefs: Brief[]): Brief[] {
-  const enriched = briefs.map(enrichBriefImage);
+  const enriched = briefs.map((brief) => enrichArticleCopy(enrichBriefImage(brief)));
   const filtered = enriched.filter(isEnrichedBrief);
   return filtered.length > 0 ? filtered : enriched;
 }

@@ -7,6 +7,7 @@ import { formatDateTime, formatPublishedTimeLabel } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
 import { enrichBriefImage } from "@/lib/article-image";
+import { enrichArticleCopy } from "@/lib/article-analysis";
 import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
 import { AssetTags } from "./AssetTags";
@@ -25,7 +26,7 @@ export function ArticleCard({
   variant?: "hero" | "standard" | "compact";
   priorityImage?: boolean;
 }) {
-  const enriched = enrichBriefImage(article);
+  const enriched = enrichArticleCopy(enrichBriefImage(article));
   const fallbackLabel = enriched.ticker !== "—" ? enriched.ticker : enriched.topic;
   const fallbackImageId = enriched.fallbackImageId;
   const imageDisplay = enriched.imageDisplay;
@@ -120,7 +121,7 @@ export function ArticleCard({
             </h3>
           </Link>
           <p className="mt-2 text-sm leading-relaxed text-fin-subtle line-clamp-2">
-            {article.excerpt}
+            {enriched.excerpt}
           </p>
         </div>
 

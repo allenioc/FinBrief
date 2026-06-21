@@ -130,27 +130,15 @@ function isSecuritiesLawsuitTemplate(brief: Brief): boolean {
   return fromWireSource && hasTemplateMarker;
 }
 
+/** Exported for summary rewriting and legal-notice copy cleanup. */
+export function isSecuritiesLegalNotice(brief: Pick<Brief, "headline" | "excerpt" | "source">): boolean {
+  return isSecuritiesLawsuitTemplate(brief as Brief);
+}
+
 function securitiesLawsuitClusterKey(brief: Brief): string | null {
   if (!isSecuritiesLawsuitTemplate(brief)) return null;
-
-  if (brief.ticker && brief.ticker !== "—") {
-    return `securities-template::${brief.ticker.toUpperCase()}`;
-  }
-
-  const headline = normalizeTitle(brief.headline);
-  const encouragesMatch = headline.match(
-    /(?:encourages|reminds|announces|investigates|alerts)\s+([a-z0-9\s]{3,40}?)\s+(?:investors|stockholders|shareholders)/
-  );
-  if (encouragesMatch?.[1]) {
-    return `securities-template::${encouragesMatch[1].trim()}`;
-  }
-
-  const againstMatch = headline.match(/against\s+([a-z0-9\s]{3,40}?)(?:\s+investors|\s+class|\s+to)/);
-  if (againstMatch?.[1]) {
-    return `securities-template::${againstMatch[1].trim()}`;
-  }
-
-  return null;
+  // One slot for repeated Rosen Law / PRNewswire securities notices on the dashboard.
+  return "securities-template::wire-legal-notice";
 }
 
 export function isHardDuplicate(a: Brief, b: Brief): boolean {
@@ -210,6 +198,7 @@ export function scoreStoryQuality(brief: Brief): number {
   score += sourceMetadataScore(brief);
   score += publishedTime(brief.publishedAt) / 1e13;
   if (brief.marketImpact === "high") score += 1;
+  if (isSecuritiesLawsuitTemplate(brief)) score -= 12;
   return score;
 }
 

@@ -6,6 +6,7 @@ import {
   buildThirtySecondVersion,
   buildWhyItMatters,
   buildWhoIsAffected,
+  enrichArticleCopy,
   estimateMarketImpact,
   estimateSentiment,
   extractKeyTerms,
@@ -179,7 +180,8 @@ export function normalizeProviderArticles(input: {
 }
 
 export function normalizedToBrief(article: NormalizedNewsArticle): Brief {
-  return enrichBriefImage({
+  return enrichArticleCopy(
+    enrichBriefImage({
     id: article.id,
     headline: article.headline,
     source: article.source,
@@ -231,7 +233,8 @@ export function normalizedToBrief(article: NormalizedNewsArticle): Brief {
       kind: "topic",
     })),
     sourceLinks: [{ name: article.source, url: article.originalUrl }],
-  });
+    })
+  );
 }
 
 export function providerArticlesToBriefs(params: {
