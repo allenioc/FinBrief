@@ -33,14 +33,11 @@ export function Sidebar({
     href: `/?q=${encodeURIComponent(item.symbol)}`,
   }));
 
-  const defaultTopics = SIDEBAR_NAV.find((section) => section.label === "Topics")?.items ?? [];
-  const mainSections = SIDEBAR_NAV.filter((section) => section.label !== "Topics");
   const navSections = [
-    ...mainSections,
+    ...SIDEBAR_NAV,
     ...(followingItems.length > 0
       ? [{ label: "Following", items: followingItems }]
       : []),
-    { label: "Topics", items: defaultTopics },
   ];
 
   return (

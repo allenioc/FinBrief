@@ -42,23 +42,4 @@ export const SIDEBAR_NAV: NavSection[] = [
       { label: "About", href: "/about" },
     ],
   },
-  {
-    label: "Topics",
-    items: [
-      { label: "AAPL", href: "/?q=AAPL" },
-      { label: "MSFT", href: "/?q=MSFT" },
-      { label: "NVDA", href: "/?q=NVDA" },
-      { label: "TSLA", href: "/?q=TSLA" },
-      { label: "SPY", href: "/?q=SPY" },
-      { label: "QQQ", href: "/?q=QQQ" },
-      { label: "VTI", href: "/?q=VTI" },
-      { label: "DIA", href: "/?q=DIA" },
-      { label: "AI", href: "/?q=AI" },
-      { label: "Markets", href: "/?q=Markets" },
-      { label: "Economy", href: "/?q=Economy" },
-      { label: "Banking", href: "/?q=Banking" },
-      { label: "Real Estate", href: "/?q=Real%20Estate" },
-      { label: "Interest Rates", href: "/?q=Interest%20Rates" },
-    ],
-  },
 ];
