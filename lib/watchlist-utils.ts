@@ -3,6 +3,13 @@ import type { Brief, TopicProfile, WatchlistItem, WatchlistItemType } from "./ty
 
 export const WATCHLIST_STORAGE_KEY = "finbrief-watchlist";
 
+/** Newest additions first — shared by watchlist table and sidebar Following. */
+export function sortWatchlistItems(items: WatchlistItem[]): WatchlistItem[] {
+  return [...items].sort(
+    (a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime()
+  );
+}
+
 function toSymbol(value: string): string {
   return value.trim().toUpperCase();
 }

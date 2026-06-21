@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { MOCK_WATCHLIST } from "@/lib/watchlist-data";
-import { WATCHLIST_STORAGE_KEY } from "@/lib/watchlist-utils";
+import { sortWatchlistItems, WATCHLIST_STORAGE_KEY } from "@/lib/watchlist-utils";
 import type { WatchlistItem } from "@/lib/types";
 
 interface WatchlistContextValue {
@@ -42,12 +42,14 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!ready) return;
-    localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(items));
+    localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(sortWatchlistItems(items)));
   }, [items, ready]);
+
+  const sortedItems = useMemo(() => sortWatchlistItems(items), [items]);
 
   const value = useMemo<WatchlistContextValue>(
     () => ({
-      items,
+      items: sortedItems,
       ready,
       isFollowing: (symbol) => {
         const key = normalize(symbol);
@@ -73,7 +75,7 @@ export function WatchlistProvider({ children }: { children: React.ReactNode }) {
         });
       },
     }),
-    [items, ready]
+    [sortedItems, items, ready]
   );
 
   return <WatchlistContext.Provider value={value}>{children}</WatchlistContext.Provider>;
