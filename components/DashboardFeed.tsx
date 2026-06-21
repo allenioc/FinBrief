@@ -113,7 +113,8 @@ export function DashboardFeed({
             title="Dashboard layout debug"
           >
             source {dataSource} · saved {savedArticleCount} · top {renderedTopStoryCount}
-            {!isTopicView && ` · imageUrl ${debug.articlesWithImageUrl}`}
+            {!isTopicView &&
+              ` · dedup ${layoutDebug.rawArticleCount}→${layoutDebug.dedupedArticleCount} (−${layoutDebug.duplicatesRemoved}) · imageUrl ${debug.articlesWithImageUrl}`}
           </span>
         </div>
         <p className="text-xs text-fin-subtle">

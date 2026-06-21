@@ -1,6 +1,18 @@
 import { DASHBOARD_TOP_STORIES_MAX } from "./news-constants";
 import { countArticlesWithImageUrl } from "./article-image";
+import {
+  dedupeStories,
+  filterUniqueStories,
+} from "./story-dedup";
 import type { Brief } from "./types";
+
+export {
+  areSimilarTitles,
+  filterUniqueStories,
+  isHardDuplicate,
+  isSameStory,
+  normalizeArticleUrl,
+} from "./story-dedup";
 
 export interface DashboardSection {
   title: string;
@@ -10,86 +22,12 @@ export interface DashboardSection {
 
 export type DashboardLayoutDebug = {
   savedEditionArticleCount: number;
+  rawArticleCount: number;
+  dedupedArticleCount: number;
+  duplicatesRemoved: number;
   topStoriesCount: number;
   articlesWithImageUrl: number;
 };
-
-function normalizeTitle(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-export function normalizeArticleUrl(url: string): string {
-  const trimmed = url?.trim() ?? "";
-  if (!trimmed) return "";
-  try {
-    const parsed = new URL(trimmed);
-    parsed.hash = "";
-    parsed.search = "";
-    return parsed.toString().toLowerCase().replace(/\/$/, "");
-  } catch {
-    return trimmed.toLowerCase();
-  }
-}
-
-export function areSimilarTitles(a: string, b: string): boolean {
-  const left = normalizeTitle(a);
-  const right = normalizeTitle(b);
-  if (!left || !right) return false;
-  if (left === right) return true;
-
-  const prefixLength = Math.min(50, left.length, right.length);
-  if (prefixLength >= 30) {
-    if (left.startsWith(right.slice(0, prefixLength)) || right.startsWith(left.slice(0, prefixLength))) {
-      return true;
-    }
-  }
-
-  const wordsLeft = new Set(left.split(" ").filter((word) => word.length > 4));
-  const wordsRight = new Set(right.split(" ").filter((word) => word.length > 4));
-  if (wordsLeft.size === 0 || wordsRight.size === 0) return false;
-
-  let overlap = 0;
-  wordsLeft.forEach((word) => {
-    if (wordsRight.has(word)) overlap += 1;
-  });
-  return overlap / Math.min(wordsLeft.size, wordsRight.size) >= 0.85;
-}
-
-export function isHardDuplicate(a: Brief, b: Brief): boolean {
-  if (a.id === b.id) return true;
-
-  const urlA = normalizeArticleUrl(a.originalUrl);
-  const urlB = normalizeArticleUrl(b.originalUrl);
-  return Boolean(urlA && urlB && urlA === urlB);
-}
-
-export function isSameStory(a: Brief, b: Brief): boolean {
-  if (isHardDuplicate(a, b)) return true;
-  return areSimilarTitles(a.headline, b.headline);
-}
-
-export function filterUniqueStories(stories: Brief[], excluded: Brief[] = []): Brief[] {
-  const kept: Brief[] = [];
-  for (const story of stories) {
-    if (excluded.some((item) => isSameStory(story, item))) continue;
-    if (kept.some((item) => isSameStory(story, item))) continue;
-    kept.push(story);
-  }
-  return kept;
-}
-
-function filterHardUniqueStories(stories: Brief[]): Brief[] {
-  const kept: Brief[] = [];
-  for (const story of stories) {
-    if (kept.some((item) => isHardDuplicate(story, item))) continue;
-    kept.push(story);
-  }
-  return kept;
-}
 
 function publishedTime(iso: string): number {
   const value = new Date(iso).getTime();
@@ -121,8 +59,13 @@ function rankStories(stories: Brief[]): Brief[] {
 export function buildDashboardSections(
   briefs: Brief[]
 ): { sections: DashboardSection[]; layoutDebug: DashboardLayoutDebug } {
-  // Use the full saved daily edition; week scoping is applied when the edition is fetched.
-  const pool = filterHardUniqueStories(rankStories(briefs));
+  const {
+    stories: dedupedStories,
+    rawArticleCount,
+    dedupedArticleCount,
+    duplicatesRemoved,
+  } = dedupeStories(briefs);
+  const pool = rankStories(dedupedStories);
 
   const topLimit = Math.min(DASHBOARD_TOP_STORIES_MAX, pool.length);
   const topStories = pool.slice(0, topLimit);
@@ -136,8 +79,11 @@ export function buildDashboardSections(
 
   const layoutDebug: DashboardLayoutDebug = {
     savedEditionArticleCount: briefs.length,
+    rawArticleCount,
+    dedupedArticleCount,
+    duplicatesRemoved,
     topStoriesCount: topStories.length,
-    articlesWithImageUrl: countArticlesWithImageUrl(briefs),
+    articlesWithImageUrl: countArticlesWithImageUrl(dedupedStories),
   };
 
   return {
