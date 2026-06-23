@@ -163,24 +163,6 @@ export function ArticleDetail({ article }: { article: Brief }) {
           <Section title="Why it matters">{enriched.whyItMatters}</Section>
           <Section title="Who is affected?">{article.whoIsAffected}</Section>
 
-          {article.originalUrl && (
-            <section className="fin-panel border-l-4 border-l-fin-brand">
-              <h2 className="mb-2 text-lg font-bold text-fin-navy">Read the full story</h2>
-              <p className="text-sm text-fin-subtle">
-                FinBrief summarizes publicly available reporting from {article.source}. The complete
-                article, including quotes and charts, is on the publisher&apos;s site.
-              </p>
-              <a
-                href={article.originalUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="fin-btn-primary mt-4 inline-flex"
-              >
-                Read full article at source ↗
-              </a>
-            </section>
-          )}
-
           <div className="space-y-4">
             <h2 className="fin-section-title">Analysis</h2>
             <Section title="Bullish interpretation" variant="bull">

@@ -169,6 +169,97 @@ function formatSubjectList(subjects: string[]): string {
   return `${subjects.slice(0, -1).join(", ")}, and ${subjects[subjects.length - 1]}`;
 }
 
+const MONTH_NAMES = new Set([
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+]);
+
+const INVALID_ENTITY_WORDS = new Set([
+  "Learn",
+  "Read",
+  "Watch",
+  "Breaking",
+  "Update",
+  "How",
+  "Why",
+  "What",
+  "When",
+  "Where",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+  "Markets",
+  "Market",
+  "Stock",
+  "Stocks",
+  "Bond",
+  "Bonds",
+  "Chief",
+  "Global",
+  "More",
+  "New",
+  "First",
+  "Second",
+  "Third",
+  "Fourth",
+  "Full",
+  "Big",
+  "Top",
+  "Best",
+  "High",
+  "Low",
+  "Bloomberg",
+  "Reuters",
+  "CNBC",
+  "Wall",
+  "Street",
+  "Federal",
+  "Reserve",
+  "Treasury",
+  "Investors",
+  "Analysts",
+  "Shares",
+  "Trading",
+  "Report",
+  "Reports",
+  "News",
+  "Today",
+  "Tomorrow",
+  "Yesterday",
+]);
+
+function isValidEntityCandidate(name: string, knownNames: string[]): boolean {
+  const trimmed = normalizeWhitespace(name);
+  if (trimmed.length < 2) return false;
+  if (knownNames.some((known) => known.toLowerCase() === trimmed.toLowerCase())) return true;
+
+  const words = trimmed.split(/\s+/);
+  if (words.some((word) => MONTH_NAMES.has(word) || INVALID_ENTITY_WORDS.has(word))) {
+    return false;
+  }
+  if (/\sMarkets$/i.test(trimmed)) return false;
+
+  if (words.length === 1) {
+    return /^[A-Z]{2,5}$/.test(words[0]);
+  }
+
+  return /\b(?:Inc\.?|Corporation|Corp\.|LLC|Ltd\.?|LP|REIT|Company)\b/.test(trimmed);
+}
+
 function extractMentionedSubjects(headline: string, excerpt: string): string[] {
   const text = `${headline} ${excerpt}`;
   const subjects = new Set<string>();
@@ -195,57 +286,18 @@ function extractMentionedSubjects(headline: string, excerpt: string): string[] {
       subjects.add(name);
     }
   }
-  const tickerMatches = text.match(/\b[A-Z]{2,5}\b/g) ?? [];
-  const tickerBlocklist = new Set([
-    "CEO",
-    "CFO",
-    "ETF",
-    "GDP",
-    "CPI",
-    "FED",
-    "USA",
-    "USD",
-    "AI",
-    "NEW",
-    "YORK",
-    "LAW",
-    "FIRM",
-    "LLP",
-    "INC",
-    "LLC",
-    "LTD",
-    "PLC",
-    "THE",
-    "FOR",
-    "AND",
-    "PR",
-    "WHY",
-    "JUN",
-    "JUL",
-    "AUG",
-    "SEP",
-    "OCT",
-    "NOV",
-    "DEC",
-    "NASDAQ",
-    "NYSE",
-    "CLASS",
-    "LEAD",
-    "HAVE",
-    "WITH",
-    "FROM",
-  ]);
-  for (const ticker of tickerMatches) {
-    if (!tickerBlocklist.has(ticker)) {
-      subjects.add(ticker);
-    }
+
+  for (const match of text.matchAll(/\((?:NASDAQ|NYSE|AMEX|Nasdaq|Nyse):\s*([A-Z]{1,5})\)/gi)) {
+    subjects.add(match[1].toUpperCase());
   }
-  const properNounMatches = text.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b/g) ?? [];
-  for (const match of properNounMatches) {
-    if (!["The", "This", "That", "Read", "Watch", "Breaking", "Update"].includes(match.split(" ")[0])) {
-      subjects.add(match);
-    }
+
+  for (const match of text.matchAll(
+    /\b([A-Z][A-Za-z0-9&,.\s-]{1,60}?\s+(?:Inc\.?|Corporation|Corp\.|LLC|Ltd\.?|LP|REIT|Company))\b/g
+  )) {
+    const name = normalizeWhitespace(match[1]);
+    if (isValidEntityCandidate(name, knownNames)) subjects.add(name);
   }
+
   return [...subjects].slice(0, 4);
 }
 
@@ -341,7 +393,7 @@ function pickEventSentence(ctx: ArticlePreviewContext): string {
   return `Based on the available source preview, this story appears to cover ${ctx.headline.toLowerCase()}.`;
 }
 
-function buildWatchBullet(ctx: ArticlePreviewContext): string {
+function buildWatchBullet(ctx: ArticlePreviewContext, entity = ""): string {
   const lower = ctx.excerpt.toLowerCase();
   if (/\bguidance|outlook|forecast|expects|expected\b/.test(lower)) {
     return "Watch whether management guidance or analyst expectations change after the full report is published.";
@@ -355,8 +407,8 @@ function buildWatchBullet(ctx: ArticlePreviewContext): string {
   if (/\bdeal|merger|acquisition|takeover\b/.test(lower)) {
     return "Watch for regulatory filings, counteroffers, or updates on whether the deal progresses.";
   }
-  if (ctx.subjects.length > 0) {
-    return `Watch for follow-up reporting on ${formatSubjectList(ctx.subjects)} from ${ctx.source || "the publisher"}.`;
+  if (entity) {
+    return `Watch for follow-up reporting on ${entity} from ${ctx.source || "the publisher"}.`;
   }
   return "Watch for follow-up reporting that adds detail beyond the current preview.";
 }
@@ -669,25 +721,78 @@ function paraphraseExcerptSentence(sentence: string, entity: string, headline: s
   if (!rewritten || isSummaryBoilerplate(rewritten)) return "";
   if (isTooSimilarToSource(rewritten, sentence)) {
     rewritten = rewritten
-      .replace(/\bannounced\b/i, "reported")
-      .replace(/\bsaid\b/i, "noted")
-      .replace(/\bcompleted\b/i, "finished")
-      .replace(/\bexpects\b/i, "anticipates");
+      .replace(/\bannounced\b/gi, "said")
+      .replace(/\bwill\b/gi, "plans to")
+      .replace(/\bsaid\b/gi, "noted")
+      .replace(/\breport\b/gi, "described")
+      .replace(/\bshow\b/gi, "highlight")
+      .replace(/\bcompleted\b/gi, "finished")
+      .replace(/\bexpects\b/gi, "anticipates");
   }
   if (isTooSimilarToSource(rewritten, sentence)) {
     const clause = rewritten.replace(/^[^,]+,\s*/, "");
     if (
       clause !== rewritten &&
       entity &&
-      /\b(will|said|announced|reported|plans|expects|completed|issued|host|release)\b/i.test(clause)
+      /\b(will|said|announced|reported|plans|expects|completed|issued|host|release|highlight|describe)\b/i.test(
+        clause
+      )
     ) {
       rewritten = `${entity} ${clause.charAt(0).toLowerCase()}${clause.slice(1)}`;
     }
   }
 
-  if (countWords(rewritten) < 8) return "";
+  if (countWords(rewritten) < 6) return "";
 
   return ensurePeriod(rewritten);
+}
+
+function groupSentencesIntoParagraphs(sentences: string[], maxParagraphs: number): string[] {
+  const cleaned = sentences.map((sentence) => ensurePeriod(sentence)).filter(Boolean);
+  if (cleaned.length === 0) return [];
+  if (cleaned.length <= maxParagraphs) return cleaned;
+
+  const paragraphs: string[] = [];
+  const chunkSize = Math.ceil(cleaned.length / maxParagraphs);
+  for (let i = 0; i < cleaned.length; i += chunkSize) {
+    paragraphs.push(cleaned.slice(i, i + chunkSize).join(" "));
+  }
+  return paragraphs.slice(0, maxParagraphs);
+}
+
+function collectParaphrasedExcerptSentences(
+  headline: string,
+  excerpt: string,
+  entity: string
+): string[] {
+  const collected: string[] = [];
+  const facts = extractStoryFacts(headline, excerpt);
+  const scheduling = buildSchedulingParagraph(entity, facts);
+  if (scheduling) {
+    for (const sentence of splitSentences(scheduling)) {
+      if (!isNearDuplicate(sentence, collected)) collected.push(sentence);
+    }
+  }
+
+  const webcast = buildWebcastParagraph(entity, excerpt);
+  if (webcast && !isNearDuplicate(webcast, collected)) collected.push(webcast);
+
+  for (const sentence of summarySentences(excerpt)) {
+    const rewritten = paraphraseExcerptSentence(sentence, entity, headline);
+    if (!rewritten || isNearDuplicate(rewritten, collected)) continue;
+    collected.push(rewritten);
+  }
+
+  if (collected.length === 0) {
+    const woven = weaveExcerptIntoProse(excerpt, entity, headline);
+    if (woven) {
+      for (const sentence of splitSentences(woven)) {
+        if (!isNearDuplicate(sentence, collected)) collected.push(sentence);
+      }
+    }
+  }
+
+  return collected;
 }
 
 interface ExtractedStoryFacts {
@@ -971,8 +1076,14 @@ function buildSummarySignificanceParagraph(ctx: ArticlePreviewContext, entity: s
       ? `The story involves legal or regulatory issues connected to ${entity}.`
       : "The story involves legal or regulatory issues connected to the parties named in the report.";
   }
-  if (ctx.subjects.length > 0) {
-    return `The development directly involves ${formatSubjectList(ctx.subjects)}.`;
+  if (entity) {
+    return `The update is most directly relevant to investors following ${entity}.`;
+  }
+  if (ctx.themes.includes("rates")) {
+    return "Macro and policy developments of this kind can influence rate expectations and financial conditions.";
+  }
+  if (ctx.themes.includes("market")) {
+    return "Market-focused developments like this one can shape how investors interpret recent price action and sector trends.";
   }
 
   return "";
@@ -1038,19 +1149,15 @@ export function buildFinBriefSummary(
   void publishedAt;
   const ctx = buildArticlePreviewContext(headline, excerpt, source, publishedAt);
   const entity = extractPrimaryEntity(headline, excerpt);
-  const paragraphs: string[] = [];
+  const paragraphs: string[] = [paraphraseHeadlineLead(headline, entity)];
 
-  paragraphs.push(paraphraseHeadlineLead(headline, entity));
-
-  const details = buildSummaryDetailsParagraph(headline, excerpt, entity);
-  if (details && countWords(details) >= 8 && !isSubstantiveDuplicate(details, paragraphs)) {
-    const detailSentences = splitSentences(details);
-    if (detailSentences.length >= 2 && countWords(details) >= 40) {
-      const midpoint = Math.ceil(detailSentences.length / 2);
-      paragraphs.push(detailSentences.slice(0, midpoint).join(" "));
-      paragraphs.push(detailSentences.slice(midpoint).join(" "));
-    } else {
-      paragraphs.push(details);
+  const bodyParagraphs = groupSentencesIntoParagraphs(
+    collectParaphrasedExcerptSentences(headline, excerpt, entity),
+    3
+  );
+  for (const paragraph of bodyParagraphs) {
+    if (countWords(paragraph) >= 6 && !isSubstantiveDuplicate(paragraph, paragraphs)) {
+      paragraphs.push(paragraph);
     }
   }
 
@@ -1059,13 +1166,7 @@ export function buildFinBriefSummary(
     paragraphs.push(significance);
   }
 
-  const webcast = buildWebcastParagraph(entity, excerpt);
-  if (webcast && !isSubstantiveDuplicate(webcast, paragraphs)) {
-    paragraphs.push(webcast);
-  }
-
-  const expanded = expandSummaryToTarget(paragraphs, headline, excerpt, entity);
-  return trimSummaryParagraphs(expanded, 350, 450);
+  return trimSummaryParagraphs(paragraphs, 400, 450);
 }
 
 function buildThirtySecondEventBullet(headline: string, entity: string): string {
@@ -1093,8 +1194,11 @@ function buildThirtySecondImpactBullet(
       ? `The update can shift expectations for ${entity} and for similar companies in the same industry.`
       : "The update can shift expectations for the companies involved and for similar assets in the same industry.";
   }
-  if (ctx.subjects.length > 0) {
-    return `The story is most relevant to readers following ${formatSubjectList(ctx.subjects)}.`;
+  if (/\bearnings|quarter|results|market|stock|shares|inflation|rate|fed\b/.test(lower)) {
+    return "The development may affect how investors interpret recent market or company news in this area.";
+  }
+  if (entity) {
+    return `The story is most relevant to investors tracking ${entity}.`;
   }
   return "The development may affect how investors interpret recent news in the same topic area.";
 }
@@ -1129,7 +1233,7 @@ export function buildThirtySecondVersion(
   const bullets = uniqueThirtySecondBullets([
     buildThirtySecondEventBullet(headline, entity),
     buildThirtySecondImpactBullet(ctx, entity, headline),
-    buildWatchBullet(ctx),
+    buildWatchBullet(ctx, entity),
   ]);
 
   return bullets.map((bullet) => `• ${bullet}`).join("\n");
@@ -1366,7 +1470,7 @@ function buildSecuritiesLegalSummary(
     }
   }
 
-  return trimSummaryParagraphs(paragraphs, 350, 450);
+  return trimSummaryParagraphs(paragraphs, 400, 450);
 }
 
 function buildSecuritiesLegalThirtySecond(details: SecuritiesNoticeDetails): string {
