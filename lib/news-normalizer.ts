@@ -6,14 +6,14 @@ import {
   buildThirtySecondVersion,
   buildWhyItMatters,
   buildWhoIsAffected,
-  enrichArticleCopy,
+  enrichBrief,
   estimateMarketImpact,
   estimateSentiment,
   extractKeyTerms,
   inferArticleType,
   inferDisplayTopic,
 } from "./article-analysis";
-import { enrichBriefImage, computeFallbackImageId } from "./article-image";
+import { computeFallbackImageId } from "./article-image";
 import { toTopicSlug } from "./slug";
 import type { ProviderArticle } from "./news-providers";
 import type { Brief, MarketImpact, Sentiment } from "./types";
@@ -180,8 +180,7 @@ export function normalizeProviderArticles(input: {
 }
 
 export function normalizedToBrief(article: NormalizedNewsArticle): Brief {
-  return enrichArticleCopy(
-    enrichBriefImage({
+  return enrichBrief({
     id: article.id,
     headline: article.headline,
     source: article.source,
@@ -233,8 +232,7 @@ export function normalizedToBrief(article: NormalizedNewsArticle): Brief {
       kind: "topic",
     })),
     sourceLinks: [{ name: article.source, url: article.originalUrl }],
-    })
-  );
+  });
 }
 
 export function providerArticlesToBriefs(params: {

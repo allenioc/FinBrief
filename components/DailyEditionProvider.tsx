@@ -10,8 +10,8 @@ import {
   useState,
 } from "react";
 import type { Brief } from "@/lib/types";
-import { enrichBriefImage, countArticlesWithImageUrl } from "@/lib/article-image";
-import { enrichArticleCopy } from "@/lib/article-analysis";
+import { countArticlesWithImageUrl } from "@/lib/article-image";
+import { enrichBrief } from "@/lib/article-analysis";
 import { DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
 import { shouldUpgradeEdition } from "@/lib/daily-edition";
 import {
@@ -48,7 +48,7 @@ const DailyEditionContext = createContext<DailyEditionContextValue | null>(null)
 let memorySnapshot: DailyEditionSnapshot | null = null;
 
 function enrichBriefs(briefs: Brief[]): Brief[] {
-  return briefs.map((brief) => enrichArticleCopy(enrichBriefImage(brief)));
+  return briefs.map(enrichBrief);
 }
 
 function idsSignature(items: Brief[]): string {

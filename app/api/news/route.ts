@@ -8,7 +8,8 @@ import {
 import { providerArticlesToBriefs } from "@/lib/news-normalizer";
 import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
 import { searchBriefs } from "@/lib/briefs";
-import { enrichBriefImage, countArticlesWithImageUrl } from "@/lib/article-image";
+import { enrichBrief } from "@/lib/article-analysis";
+import { countArticlesWithImageUrl } from "@/lib/article-image";
 import { filterBriefsForTopic } from "@/lib/topic-stories";
 import { isLiveEditionPayload } from "@/lib/daily-edition";
 import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
@@ -109,8 +110,22 @@ function isAdminRequest(request: NextRequest): { authorized: boolean; note?: str
 }
 
 function enrichPayloadBriefs(payload: CachedPayload): CachedPayload {
-  const briefs = payload.briefs.map(enrichBriefImage);
-  const syncImageFields = <T extends { imageUrl?: string; fallbackImageId?: string; imageDisplay?: "provider" | "fallback" }>(
+  const briefs = payload.briefs.map(enrichBrief);
+  const syncFromBrief = <
+    T extends {
+      imageUrl?: string;
+      fallbackImageId?: string;
+      imageDisplay?: "provider" | "fallback";
+      finbriefSummary?: string;
+      thirtySecondVersion?: string;
+      whatHappened?: string;
+      whyItMatters?: string;
+      whoIsAffected?: string[];
+      sentiment?: Brief["sentiment"];
+      marketImpact?: Brief["marketImpact"];
+      confidence?: number;
+    },
+  >(
     article: T,
     brief: (typeof briefs)[number]
   ): T => ({
@@ -118,6 +133,14 @@ function enrichPayloadBriefs(payload: CachedPayload): CachedPayload {
     imageUrl: brief.imageUrl,
     fallbackImageId: brief.fallbackImageId,
     imageDisplay: brief.imageDisplay,
+    finbriefSummary: brief.summary,
+    thirtySecondVersion: brief.thirtySecondVersion,
+    whatHappened: brief.whatHappened,
+    whyItMatters: brief.whyItMatters,
+    whoIsAffected: brief.whoIsAffected.split(",").map((entry) => entry.trim()),
+    sentiment: brief.sentiment,
+    marketImpact: brief.marketImpact,
+    confidence: brief.sentimentConfidence,
   });
 
   return {
@@ -126,12 +149,12 @@ function enrichPayloadBriefs(payload: CachedPayload): CachedPayload {
     articles: payload.articles.map((article, index) => {
       const brief = briefs[index];
       if (!brief) return article;
-      return syncImageFields(article, brief);
+      return syncFromBrief(article, brief);
     }),
     normalized: payload.normalized.map((article, index) => {
       const brief = briefs[index];
       if (!brief) return article;
-      return syncImageFields(article, brief);
+      return syncFromBrief(article, brief);
     }),
     articleCount: briefs.length,
   };
@@ -197,7 +220,7 @@ function topicFilteredPayload(base: CachedPayload, topicQuery: string): CachedPa
 function toMockPayload(query: string, page: number, limit: number): CachedPayload {
   const fallback = query.trim() ? searchBriefs(query) : MOCK_BRIEFS;
   const start = (Math.max(1, page) - 1) * limit;
-  const pageItems = fallback.slice(start, start + limit).map(enrichBriefImage);
+  const pageItems = fallback.slice(start, start + limit);
   return {
     query,
     provider: "mock",
@@ -317,7 +340,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         found: true,
         source: `index:${indexed.tier}`,
-        article: enrichBriefImage(indexed.value),
+        article: enrichBrief(indexed.value),
       });
     }
     const broadScope = "broad-business-finance";
@@ -328,7 +351,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
           found: true,
           source: `edition:${record.tier}`,
-          article: enrichBriefImage(match),
+          article: enrichBrief(match),
         });
       }
     }
@@ -338,7 +361,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         found: true,
         source: `lastgood:${lastGood.tier}`,
-        article: enrichBriefImage(staleMatch),
+        article: enrichBrief(staleMatch),
       });
     }
     return NextResponse.json({ found: false }, { status: 404 });

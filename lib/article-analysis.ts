@@ -1,5 +1,6 @@
 import type { Brief, DataSnapshot, MarketImpact, Sentiment } from "./types";
 import { isSecuritiesLegalNotice } from "./story-dedup";
+import { enrichBriefImage } from "./article-image";
 
 const POSITIVE_WORDS = [
   "beat",
@@ -2769,4 +2770,9 @@ export function enrichArticleCopy(brief: Brief): Brief {
     sentiment: financeRelated ? sentiment : sentiment === "mixed" ? "mixed" : "neutral",
     marketImpact,
   };
+}
+
+/** Apply image + FinBrief copy enrichment for every Article Brief surface. */
+export function enrichBrief(brief: Brief): Brief {
+  return enrichArticleCopy(enrichBriefImage(brief));
 }

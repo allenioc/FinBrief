@@ -6,8 +6,7 @@ import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
 import { formatDateTime, formatPublishedTimeLabel } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
-import { enrichBriefImage } from "@/lib/article-image";
-import { enrichArticleCopy } from "@/lib/article-analysis";
+import { enrichBrief } from "@/lib/article-analysis";
 import { saveDashboardScroll } from "@/lib/dashboard-scroll-restore";
 import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
@@ -27,7 +26,7 @@ export function ArticleCard({
   variant?: "hero" | "standard" | "compact";
   priorityImage?: boolean;
 }) {
-  const enriched = enrichArticleCopy(enrichBriefImage(article));
+  const enriched = enrichBrief(article);
   const fallbackLabel = enriched.ticker !== "—" ? enriched.ticker : enriched.topic;
   const fallbackImageId = enriched.fallbackImageId;
   const imageDisplay = enriched.imageDisplay;

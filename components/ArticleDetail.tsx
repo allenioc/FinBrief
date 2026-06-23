@@ -1,12 +1,10 @@
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
 import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
-import { parseThirtySecondBullets } from "@/lib/article-analysis";
+import { enrichBrief, parseThirtySecondBullets, shouldShowDataSnapshot } from "@/lib/article-analysis";
 import { formatDateTime } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
-import { enrichBriefImage } from "@/lib/article-image";
-import { enrichArticleCopy, shouldShowDataSnapshot } from "@/lib/article-analysis";
 import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
 import { AssetTags } from "./AssetTags";
@@ -47,7 +45,7 @@ function Section({
 }
 
 export function ArticleDetail({ article }: { article: Brief }) {
-  const enriched = enrichArticleCopy(enrichBriefImage(article));
+  const enriched = enrichBrief(article);
   const fallbackLabel = enriched.ticker !== "—" ? enriched.ticker : enriched.topic;
   const fallbackImageId = enriched.fallbackImageId;
   const imageDisplay = enriched.imageDisplay;

@@ -1,8 +1,7 @@
 import type { Brief, BriefResponse } from "./types";
 import { MOCK_BRIEFS } from "./articles-data";
 import { DAILY_EDITION_ARTICLE_LIMIT } from "./news-constants";
-import { enrichArticleCopy } from "./article-analysis";
-import { enrichBriefImage } from "./article-image";
+import { enrichBrief } from "./article-analysis";
 import { fromTopicSlug } from "./slug";
 import { filterBriefsForTopic } from "./topic-stories";
 
@@ -25,7 +24,7 @@ function isEnrichedBrief(brief: Brief): boolean {
 }
 
 function normalizeBriefs(briefs: Brief[]): Brief[] {
-  const enriched = briefs.map((brief) => enrichArticleCopy(enrichBriefImage(brief)));
+  const enriched = briefs.map(enrichBrief);
   const filtered = enriched.filter(isEnrichedBrief);
   return filtered.length > 0 ? filtered : enriched;
 }
@@ -71,7 +70,7 @@ export async function getBriefs(query: string): Promise<Brief[]> {
 
   const fallback = query.trim() ? filterBriefsForTopic(MOCK_BRIEFS, query) : MOCK_BRIEFS;
   cacheBriefs(fallback);
-  return fallback.map(enrichBriefImage);
+  return fallback.map(enrichBrief);
 }
 
 export async function fetchBriefsFromApi(): Promise<BriefResponse | null> {
