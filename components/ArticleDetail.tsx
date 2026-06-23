@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
 import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
-import { enrichBrief, parseThirtySecondBullets, shouldShowDataSnapshot } from "@/lib/article-analysis";
+import { enrichBrief, parseThirtySecondBullets } from "@/lib/article-analysis";
 import { formatDateTime } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
@@ -9,7 +9,6 @@ import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
 import { AssetTags } from "./AssetTags";
 import { ConfidenceScore } from "./ConfidenceScore";
-import { DataSnapshotPanel } from "./DataSnapshot";
 import { FollowToggleButton } from "./FollowToggleButton";
 import { MarketImpactBadge } from "./MarketImpactBadge";
 import { RecommendedNext } from "./RecommendedNext";
@@ -51,12 +50,6 @@ export function ArticleDetail({ article }: { article: Brief }) {
   const imageDisplay = enriched.imageDisplay;
   const watchlistItem = watchlistItemFromBrief(article);
   const quickBullets = parseThirtySecondBullets(enriched.thirtySecondVersion);
-  const showDataSnapshot = shouldShowDataSnapshot(
-    article.dataSnapshot,
-    article.headline,
-    article.excerpt,
-    article.ticker
-  );
 
   return (
     <div className="space-y-8">
@@ -150,8 +143,7 @@ export function ArticleDetail({ article }: { article: Brief }) {
         </footer>
       </blockquote>
 
-      <div className={`grid gap-8 ${showDataSnapshot ? "xl:grid-cols-[minmax(0,1fr)_300px]" : ""}`}>
-        <div className="space-y-6 fin-prose mx-auto max-w-full xl:max-w-none">
+      <div className="space-y-6 fin-prose mx-auto max-w-article">
           <Section title="FinBrief summary" variant="highlight">
             <p className="whitespace-pre-line">{enriched.summary}</p>
             <div className="mt-5 rounded-2xl bg-fin-brand-soft/50 p-5 not-italic">
@@ -252,13 +244,6 @@ export function ArticleDetail({ article }: { article: Brief }) {
               </ul>
             )}
           </section>
-        </div>
-
-        {showDataSnapshot && (
-          <div className="xl:sticky xl:top-28 xl:self-start">
-            <DataSnapshotPanel snapshot={article.dataSnapshot} />
-          </div>
-        )}
       </div>
     </div>
   );
