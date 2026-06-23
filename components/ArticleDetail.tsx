@@ -149,7 +149,7 @@ export function ArticleDetail({ article }: { article: Brief }) {
       <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="space-y-6 fin-prose mx-auto max-w-full xl:max-w-none">
           <Section title="FinBrief summary" variant="highlight">
-            <p>{enriched.summary}</p>
+            <p className="whitespace-pre-line">{enriched.summary}</p>
             <div className="mt-5 rounded-2xl bg-fin-brand-soft/50 p-5 not-italic">
               <p className="fin-label text-fin-brand">The 30-second version</p>
               <ul className="mt-3 list-disc space-y-2 pl-5 text-base font-medium text-fin-navy">

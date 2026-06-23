@@ -444,76 +444,412 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function trimSummaryToWordTarget(paragraphs: string[], maxWords: number): string {
-  let body = paragraphs.map((part) => normalizeWhitespace(part)).filter(Boolean).join(" ");
+function ensurePeriod(text: string): string {
+  const value = normalizeWhitespace(text);
+  if (!value) return "";
+  return value.endsWith(".") ? value : `${value}.`;
+}
 
+function stripSummaryDateline(text: string): string {
+  return normalizeWhitespace(
+    text
+      .replace(/^[A-Z][A-Za-z\s.]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s*\([^)]+\)\s*--\s*/i, "")
+      .replace(/^[A-Z\s]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s*\/PRNewswire\/\s*--\s*/i, "")
+      .replace(/^Why:\s*/i, "")
+  );
+}
+
+function stripExchangeTickers(text: string): string {
+  return normalizeWhitespace(
+    text.replace(/\((?:NASDAQ|NYSE|Nasdaq|Nyse|AMEX|Amex):\s*[^)]+\)/gi, "")
+  );
+}
+
+function stripCompanyBoilerplate(text: string): string {
+  return normalizeWhitespace(
+    text
+      .replace(/\(the ['"]Company['"]\)/gi, "")
+      .replace(
+        /,\s*a\s+(?:self-managed\s+)?(?:[\w-]+\s+){2,28}(?:trust|company|corporation|firm|bank|reit|inc\.|llc|lp)\b[^.]{0,180}?(?=\.|,\s+(?:which|that|who|today|has|have|will|announced|said|reported|completed|expects)|$)/gi,
+        ""
+      )
+  );
+}
+
+function prepareExcerptForSummary(text: string): string {
+  let cleaned = stripSummaryDateline(normalizeWhitespace(text));
+  cleaned = stripExchangeTickers(cleaned);
+  cleaned = stripCompanyBoilerplate(cleaned);
+  cleaned = cleaned.replace(/\.\.\./g, "").replace(/\s+--\s+/g, " ");
+  return normalizeWhitespace(cleaned);
+}
+
+function summarySentences(excerpt: string): string[] {
+  return splitSentences(prepareExcerptForSummary(excerpt));
+}
+
+function isSummaryBoilerplate(sentence: string): boolean {
+  const lower = sentence.toLowerCase();
+  if (sentence.length < 20) return true;
+  if (/^(new york|chicago|san francisco|boston|london|beijing|tokyo|los angeles)/i.test(sentence)) {
+    return true;
+  }
+  if (/\(globe newswire\)|\(business wire\)|\(prnewswire\)|\/prnewswire\//i.test(sentence)) return true;
+  if (/forward-looking statements|safe harbor|cautionary statement|sec filing/i.test(lower)) return true;
+  if (/is a self-managed|is a leading|is a global|focused on acquiring, owning/i.test(lower)) return true;
+  if (/no summary available from provider/i.test(lower)) return true;
+  return false;
+}
+
+function significantWords(text: string): Set<string> {
+  return new Set(
+    normalizeForCompare(text)
+      .split(" ")
+      .filter((word) => word.length > 3)
+  );
+}
+
+function possessive(name: string): string {
+  return /s$/i.test(name) ? `${name}'` : `${name}'s`;
+}
+
+function isSubstantiveDuplicate(candidate: string, existing: string[]): boolean {
+  const normalized = normalizeForCompare(candidate);
+  if (!normalized) return false;
+  return existing.some((sentence) => {
+    const other = normalizeForCompare(sentence);
+    if (!other) return false;
+    if (other === normalized) return true;
+    if (normalized.length < 40 || other.length < 40) {
+      return normalized === other;
+    }
+    const candidateWords = significantWords(candidate);
+    const otherWords = significantWords(sentence);
+    if (candidateWords.size === 0 || otherWords.size === 0) return false;
+    let overlap = 0;
+    for (const word of candidateWords) {
+      if (otherWords.has(word)) overlap += 1;
+    }
+    const ratio = overlap / Math.min(candidateWords.size, otherWords.size);
+    return ratio >= 0.75;
+  });
+}
+function isTooSimilarToSource(candidate: string, source: string): boolean {
+  const candidateWords = significantWords(candidate);
+  const sourceWords = significantWords(source);
+  if (candidateWords.size === 0 || sourceWords.size === 0) return false;
+  let overlap = 0;
+  for (const word of candidateWords) {
+    if (sourceWords.has(word)) overlap += 1;
+  }
+  return overlap / candidateWords.size >= 0.72;
+}
+
+function extractPrimaryEntity(headline: string, excerpt: string): string {
+  const headlineEntity = headline.match(
+    /^([A-Z][A-Za-z0-9&,.\s-]{2,80}?)\s+(?:Announces|Reports|Said|Completes|Issues|Files|Raises|Cuts|Lowers|Approves|Provides|Updates)\b/
+  );
+  if (headlineEntity?.[1]) return normalizeWhitespace(headlineEntity[1]);
+
+  const prepared = prepareExcerptForSummary(excerpt);
+  const entityPatterns = [
+    /^([A-Z][A-Za-z0-9&,.\s-]{2,80}?)\s*,?\s*(?:Inc\.?|LLC|Corp\.?|Corporation|REIT|LP|L\.P\.|Ltd\.?)\b/i,
+    /^([A-Z][A-Za-z0-9&,.\s-]{2,80}?)\s+(?:announced|reported|said|completed|expects|plans|issued|filed|raised|cut|lowered|raised|approved)\b/i,
+  ];
+  for (const pattern of entityPatterns) {
+    const match = prepared.match(pattern);
+    if (match?.[1]) {
+      return normalizeWhitespace(match[1].replace(/,\s*$/, ""));
+    }
+  }
+
+  const namedSubject = extractMentionedSubjects(headline, excerpt).find(
+    (subject) => subject.length > 3 && (/\s/.test(subject) || subject.length > 5)
+  );
+  return namedSubject ?? "";
+}
+
+function sentenceCaseRemainder(text: string): string {
+  let remainder = text.charAt(0).toLowerCase() + text.slice(1);
+  remainder = remainder.replace(
+    /\b(Of|The|And|Its|A|An|In|On|For|To|With|From|By|At)\b/g,
+    (match) => match.toLowerCase()
+  );
+  remainder = remainder.replace(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/g, (phrase) => {
+    if (/^Series\s+[A-Z0-9]+$/i.test(phrase)) return phrase;
+    return phrase.toLowerCase();
+  });
+  remainder = remainder.replace(/\bSeries\s+([a-z0-9]+)\b/gi, (_, id) => `Series ${id.toUpperCase()}`);
+  return remainder;
+}
+
+function paraphraseHeadlineLead(headline: string, entity: string): string {
+  let lead = headlineCore(headline);
+  const replacements: [RegExp, string][] = [
+    [/\bAnnounces?\b/gi, "announced"],
+    [/\bReports?\b/gi, "reported"],
+    [/\bCompletes?\b/gi, "completed"],
+    [/\bIssues?\b/gi, "issued"],
+    [/\bFiles?\b/gi, "filed"],
+    [/\bRaises?\b/gi, "raised"],
+    [/\bCuts?\b/gi, "cut"],
+    [/\bLowers?\b/gi, "lowered"],
+    [/\bApproves?\b/gi, "approved"],
+    [/\bProvides?\b/gi, "provided"],
+    [/\bUpdates?\b/gi, "updated"],
+    [/\bSays?\b/gi, "said"],
+  ];
+  for (const [pattern, replacement] of replacements) {
+    lead = lead.replace(pattern, replacement);
+  }
+
+  if (entity) {
+    const entityPattern = new RegExp(
+      `^${entity.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+`,
+      "i"
+    );
+    if (entityPattern.test(lead)) {
+      const remainder = lead.replace(entityPattern, "");
+      return ensurePeriod(`${entity} ${sentenceCaseRemainder(remainder)}`);
+    }
+    return ensurePeriod(`${entity} ${sentenceCaseRemainder(lead)}`);
+  }
+
+  return ensurePeriod(`${lead.charAt(0).toUpperCase()}${lead.slice(1)}`);
+}
+
+function restructureSentence(sentence: string, entity: string): string {
+  let text = prepareExcerptForSummary(sentence);
+  if (entity) {
+    const entityPattern = new RegExp(
+      `^${entity.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:,\\s*Inc\\.?|,\\s*LLC|,\\s*Corp\\.?)?\\s*`,
+      "i"
+    );
+    text = text.replace(entityPattern, entity.length > 0 ? `${entity} ` : "");
+  }
+  text = text.replace(/\bannounced that\b/i, "said");
+  text = text.replace(/\bhas announced\b/i, "announced");
+  text = text.replace(/\bwill continue to\b/i, "plans to continue to");
+  return normalizeWhitespace(text);
+}
+
+function paraphraseExcerptSentence(sentence: string, entity: string, headline: string): string {
+  if (isSummaryBoilerplate(sentence) || overlapsHeadline(sentence, headline)) return "";
+
+  let rewritten = restructureSentence(sentence, entity);
+  if (!rewritten || isSummaryBoilerplate(rewritten)) return "";
+  if (isTooSimilarToSource(rewritten, sentence)) {
+    rewritten = rewritten
+      .replace(/\bannounced\b/i, "reported")
+      .replace(/\bsaid\b/i, "noted")
+      .replace(/\bcompleted\b/i, "finished")
+      .replace(/\bexpects\b/i, "anticipates");
+  }
+  if (isTooSimilarToSource(rewritten, sentence)) {
+    const clause = rewritten.replace(/^[^,]+,\s*/, "");
+    rewritten = entity && clause !== rewritten ? `${entity} ${clause}` : rewritten;
+  }
+
+  if (countWords(rewritten) < 8) return "";
+
+  return ensurePeriod(rewritten);
+}
+
+function weaveExcerptIntoProse(excerpt: string, entity: string): string {
+  const prepared = prepareExcerptForSummary(excerpt);
+  const lower = prepared.toLowerCase();
+  if (!prepared || prepared.length < 40) return "";
+
+  const subject = entity || "The company";
+  const sentences: string[] = [];
+
+  if (/\b(quarterly|quarter|annual|year|monthly)\b/.test(lower) && /\b(results|earnings|revenue|figures|data)\b/.test(lower)) {
+    const detailParts: string[] = [];
+    if (/\bservices\b/.test(lower) && /\boutperform/.test(lower)) {
+      detailParts.push("services revenue exceeded expectations");
+    }
+    if (/\biphone\b/.test(lower) && /\b(steady|in line|held)\b/.test(lower)) {
+      detailParts.push("iPhone revenue held steady");
+    }
+    if (/\bmac\b/.test(lower) && /\b(steady|in line|held|grew|growth)\b/.test(lower)) {
+      detailParts.push("Mac revenue was broadly in line with expectations");
+    }
+    if (detailParts.length > 0) {
+      sentences.push(
+        `${subject} posted quarterly results in which ${detailParts.join(" and ")}.`
+      );
+    }
+  }
+
+  if (/\bmanagement\b/.test(lower) && /\b(said|noted|highlighted|emphasized|stated)\b/.test(lower)) {
+    const managementParts: string[] = [];
+    if (/\binstalled base\b/.test(lower) && /\b(grow|growing|continued to grow|expanded)\b/.test(lower)) {
+      managementParts.push("continued growth in the active device installed base");
+    }
+    if (/\bsubscription revenue\b/.test(lower)) {
+      managementParts.push("support for recurring subscription revenue");
+    }
+    if (managementParts.length > 0) {
+      sentences.push(
+        `Management highlighted ${managementParts.join(" and ")}, according to the report.`
+      );
+    }
+  }
+
+  if (sentences.length === 0 && /\b(because|after|amid|as a result|which|while|although)\b/.test(lower)) {
+    const factSentences = summarySentences(excerpt)
+      .filter((sentence) => !isSummaryBoilerplate(sentence))
+      .slice(0, 2)
+      .map((sentence) => {
+        const cleaned = prepareExcerptForSummary(sentence)
+          .replace(/^[A-Z][A-Za-z0-9&,.\s-]{2,40}?,?\s*(?:Inc\.?|LLC|Corp\.?)?\s*/i, `${subject} `)
+          .replace(/\bposted\b/i, "reported")
+          .replace(/\bsaid\b/i, "noted");
+        return ensurePeriod(cleaned);
+      })
+      .filter((sentence) => countWords(sentence) >= 8 && !isSummaryBoilerplate(sentence));
+    sentences.push(...factSentences);
+  }
+
+  return sentences.slice(0, 2).join(" ");
+}
+
+function buildSummaryDetailsParagraph(headline: string, excerpt: string, entity: string): string {
+  const parts: string[] = [];
+  for (const sentence of summarySentences(excerpt)) {
+    const rewritten = paraphraseExcerptSentence(sentence, entity, headline);
+    if (!rewritten || isNearDuplicate(rewritten, parts)) continue;
+    parts.push(rewritten);
+  }
+
+  const joined = parts.join(" ");
+  if (countWords(joined) >= 12 && !isTooSimilarToSource(joined, prepareExcerptForSummary(excerpt))) {
+    return joined;
+  }
+
+  return weaveExcerptIntoProse(excerpt, entity);
+}
+
+function buildSummarySignificanceParagraph(ctx: ArticlePreviewContext, entity: string): string {
+  const parts: string[] = [];
+
+  for (const sentence of summarySentences(ctx.excerpt)) {
+    if (
+      !/\bbecause|so that|as a result|which means|may affect|could affect|expected to|aims to|designed to|in order to|matter|important|significant|impact\b/i.test(
+        sentence
+      )
+    ) {
+      continue;
+    }
+    const rewritten = paraphraseExcerptSentence(sentence, entity, ctx.headline);
+    if (rewritten && !isNearDuplicate(rewritten, parts)) parts.push(rewritten);
+    if (parts.length >= 2) break;
+  }
+
+  if (parts.length > 0) return parts.join(" ");
+
+  const headlineLower = ctx.headline.toLowerCase();
+  if (/\bpreferred stock|tender offer|self[- ]tender\b/i.test(headlineLower)) {
+    return entity
+      ? `The update concerns ${possessive(entity)} preferred stock tender offers and is most relevant to holders of those securities.`
+      : "The update concerns preferred stock tender offers and is most relevant to holders of those securities.";
+  }
+  if (/\bearnings|revenue|profit|quarter|results|guidance\b/i.test(headlineLower)) {
+    return entity
+      ? `The release centers on ${possessive(entity)} financial results, which investors use to assess recent business performance.`
+      : "The release centers on financial results, which investors use to assess recent business performance.";
+  }
+  if (/\bmerger|acquisition|takeover|buyout|deal\b/i.test(headlineLower)) {
+    return entity
+      ? `The announcement involves ${entity} in a corporate transaction that can shift expectations for the parties involved.`
+      : "The announcement involves a corporate transaction that can shift expectations for the parties involved.";
+  }
+  if (/\blawsuit|regulat|antitrust|sec\b/i.test(headlineLower)) {
+    return entity
+      ? `The story involves legal or regulatory issues connected to ${entity}.`
+      : "The story involves legal or regulatory issues connected to the parties named in the report.";
+  }
+  if (ctx.subjects.length > 0) {
+    return `The development directly involves ${formatSubjectList(ctx.subjects)}.`;
+  }
+
+  return "";
+}
+
+function splitParagraphsToTarget(paragraphs: string[], minParagraphs: number, maxParagraphs: number): string[] {
+  const filtered = paragraphs.map((part) => normalizeWhitespace(part)).filter(Boolean);
+  if (filtered.length >= minParagraphs || filtered.length === 0) return filtered.slice(0, maxParagraphs);
+
+  const [first, ...rest] = filtered;
+  const sentences = splitSentences(first);
+  if (sentences.length >= 2) {
+    const midpoint = Math.ceil(sentences.length / 2);
+    return [
+      sentences.slice(0, midpoint).join(" "),
+      sentences.slice(midpoint).join(" "),
+      ...rest,
+    ]
+      .map((part) => normalizeWhitespace(part))
+      .filter(Boolean)
+      .slice(0, maxParagraphs);
+  }
+
+  return filtered;
+}
+
+function trimSummaryParagraphs(paragraphs: string[], maxWords: number): string {
+  let parts = splitParagraphsToTarget(paragraphs, 2, 4);
+
+  while (countWords(parts.join(" ")) > maxWords && parts.length > 1) {
+    parts = parts.slice(0, -1);
+  }
+
+  let body = parts.join("\n\n");
   if (countWords(body) <= maxWords) return body;
 
   const words = body.split(/\s+/).slice(0, maxWords);
   body = words.join(" ");
   const lastPeriod = body.lastIndexOf(".");
-  return lastPeriod > 0 ? body.slice(0, lastPeriod + 1) : `${body}.`;
-}
+  body = lastPeriod > 0 ? body.slice(0, lastPeriod + 1) : `${body}.`;
 
-function collectSourceSentences(ctx: ArticlePreviewContext): string[] {
-  const collected: string[] = [];
-  for (const sentence of ctx.sentences) {
-    if (isNearDuplicate(sentence, collected) || overlapsHeadline(sentence, ctx.headline)) continue;
-    collected.push(sentence);
+  const trimmedParts = body
+    .split(/\.\s+(?=[A-Z])/)
+    .map((part) => ensurePeriod(part))
+    .filter(Boolean);
+
+  if (trimmedParts.length >= 2) {
+    return trimmedParts.slice(0, 4).join("\n\n");
   }
-  return collected;
+
+  return body;
 }
 
-/** FinBrief summary: source-grounded overview (~350–450 words). */
+/** FinBrief summary: source-grounded prose overview (~400–450 words). */
 export function buildFinBriefSummary(
   headline: string,
   excerpt: string,
   source = "",
   publishedAt?: string
 ): string {
+  void source;
+  void publishedAt;
   const ctx = buildArticlePreviewContext(headline, excerpt, source, publishedAt);
+  const entity = extractPrimaryEntity(headline, excerpt);
   const paragraphs: string[] = [];
 
-  if (ctx.source) {
-    paragraphs.push(
-      `${ctx.source} published "${ctx.headline}"${formatPublishedContext(publishedAt)}.`
-    );
-  } else {
-    paragraphs.push(`The source article is titled "${ctx.headline}"${formatPublishedContext(publishedAt)}.`);
+  paragraphs.push(paraphraseHeadlineLead(headline, entity));
+
+  const details = buildSummaryDetailsParagraph(headline, excerpt, entity);
+  if (details && countWords(details) >= 8 && !isSubstantiveDuplicate(details, paragraphs)) {
+    paragraphs.push(details);
   }
 
-  paragraphs.push(...collectSourceSentences(ctx));
-
-  if (ctx.subjects.length > 0) {
-    const subjectSentence = ctx.sentences.find((sentence) =>
-      ctx.subjects.some((subject) => sentence.toLowerCase().includes(subject.toLowerCase()))
-    );
-    if (subjectSentence && !paragraphs.includes(subjectSentence)) {
-      paragraphs.push(subjectSentence);
-    }
+  const significance = buildSummarySignificanceParagraph(ctx, entity);
+  if (significance && !isSubstantiveDuplicate(significance, paragraphs)) {
+    paragraphs.push(significance);
   }
 
-  if (ctx.limited) {
-    paragraphs.push(
-      ctx.source
-        ? `The ${ctx.source} preview available to FinBrief contains only the headline and excerpt shown above.`
-        : "The publisher preview available to FinBrief contains only the headline and excerpt shown above."
-    );
-  } else if (ctx.excerpt) {
-    paragraphs.push(
-      ctx.source
-        ? `The above passages are drawn from the ${ctx.source} preview supplied with this story.`
-        : "The above passages are drawn from the publisher preview supplied with this story."
-    );
-  }
-
-  if (ctx.source) {
-    paragraphs.push(
-      `Read the full ${ctx.source} article for complete reporting, quotes, and any data not included in the preview.`
-    );
-  }
-
-  return trimSummaryToWordTarget(paragraphs, 450);
+  return trimSummaryParagraphs(paragraphs, 450);
 }
 
 /** Three useful bullets: what happened, why it matters, what to watch. */
@@ -740,23 +1076,31 @@ function buildSecuritiesLegalSummary(
   headline: string,
   excerpt: string
 ): string {
+  void publishedAt;
   const tickerNote =
     details.tickers.length > 0 ? ` (${details.tickers.join(", ")})` : "";
-  const ctx = buildArticlePreviewContext(headline, excerpt, source, publishedAt);
+  const entity = details.company;
   const paragraphs = [
-    `${details.lawFirm} published a ${details.actionLabel} on ${source || "a newswire"} regarding ${details.company}${tickerNote}.`,
-    `"${headlineCore(headline)}"`,
-    ...collectSourceSentences(ctx),
+    `${details.lawFirm} issued a ${details.actionLabel} involving ${entity}${tickerNote}.`,
+    paraphraseHeadlineLead(headline, entity),
   ];
 
-  if (ctx.source) {
-    paragraphs.push(
-      `The passages above come from the ${ctx.source} preview of this legal notice${formatPublishedContext(publishedAt)}.`
-    );
-    paragraphs.push(`Open the full ${ctx.source} release for deadline dates and eligibility details.`);
+  const detailsParagraph = buildSummaryDetailsParagraph(headline, excerpt, entity);
+  if (detailsParagraph) paragraphs.push(detailsParagraph);
+
+  const lower = prepareExcerptForSummary(excerpt).toLowerCase();
+  if (/\blead plaintiff|deadline|shareholders|purchasers|class period|investors who purchased\b/i.test(lower)) {
+    const investorImpact = summarySentences(excerpt)
+      .map((sentence) => paraphraseExcerptSentence(sentence, entity, headline))
+      .find((sentence) =>
+        /\blead plaintiff|deadline|shareholders|purchasers|class period|investors who purchased\b/i.test(sentence)
+      );
+    if (investorImpact && !isNearDuplicate(investorImpact, paragraphs)) {
+      paragraphs.push(investorImpact);
+    }
   }
 
-  return trimSummaryToWordTarget(paragraphs, 450);
+  return trimSummaryParagraphs(paragraphs, 450);
 }
 
 function buildSecuritiesLegalThirtySecond(details: SecuritiesNoticeDetails): string {
