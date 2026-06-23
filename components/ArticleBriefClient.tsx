@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
 import { enrichBriefImage } from "@/lib/article-image";
-import { toTopicSlug } from "@/lib/slug";
+import { peekDashboardReturnHref } from "@/lib/dashboard-scroll-restore";
 import { ArticleDetail } from "./ArticleDetail";
 
 /**
@@ -104,7 +104,9 @@ export function ArticleBriefClient({
     );
   }
 
-  const backHref = article.ticker !== "—" ? `/topic/${toTopicSlug(article.ticker)}` : "/";
+  const backHref = peekDashboardReturnHref(
+    article.ticker !== "—" ? `/?q=${encodeURIComponent(article.ticker)}` : "/"
+  );
 
   return (
     <div>

@@ -5,6 +5,7 @@ import { formatLastUpdated } from "@/lib/date-format";
 import { friendlyEditionError } from "@/lib/user-messages";
 import { DAILY_EDITION_ARTICLE_LIMIT, TOPIC_STORIES_MAX } from "@/lib/news-constants";
 import { dailyEditionRequestKey } from "@/lib/daily-edition-client";
+import { restoreDashboardScroll } from "@/lib/dashboard-scroll-restore";
 import { buildDashboardSections } from "@/lib/dashboard-sections";
 import { filterBriefsForTopic, findWatchlistItemForQuery } from "@/lib/topic-stories";
 import { toTopicSlug } from "@/lib/slug";
@@ -42,6 +43,18 @@ export function DashboardFeed({
   useEffect(() => {
     hydrateFromServer(initialBriefs);
   }, [hydrateFromServer, initialBriefs]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if ("scrollRestoration" in window.history) {
+      window.history.scrollRestoration = "manual";
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    restoreDashboardScroll();
+  }, [ready, editionBriefs.length, topicQuery]);
 
   const followedTopic = useMemo(
     () => (isTopicView ? findWatchlistItemForQuery(watchlistItems, topicQuery) : undefined),

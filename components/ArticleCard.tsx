@@ -8,6 +8,7 @@ import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
 import { enrichBriefImage } from "@/lib/article-image";
 import { enrichArticleCopy } from "@/lib/article-analysis";
+import { saveDashboardScroll } from "@/lib/dashboard-scroll-restore";
 import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
 import { AssetTags } from "./AssetTags";
@@ -44,6 +45,7 @@ export function ArticleCard({
   // Stash the full article so /brief/[id] can render it instantly without
   // depending on server-side caches (which are per-instance on Vercel).
   const stashArticle = () => {
+    saveDashboardScroll();
     try {
       sessionStorage.setItem(`finbrief-article-${enriched.id}`, JSON.stringify(enriched));
     } catch {
@@ -59,6 +61,7 @@ export function ArticleCard({
     >
       <Link
         href={`/brief/${article.id}`}
+        scroll={false}
         onClick={stashArticle}
         className={`relative block overflow-hidden bg-fin-muted ${imageAspect}`}
       >
@@ -111,7 +114,7 @@ export function ArticleCard({
             {article.source}
             {article.author ? ` · ${article.author}` : ""}
           </p>
-          <Link href={`/brief/${article.id}`} onClick={stashArticle}>
+          <Link href={`/brief/${article.id}`} scroll={false} onClick={stashArticle}>
             <h3
               className={`mt-2 font-bold leading-snug text-fin-navy transition-colors group-hover:text-fin-brand line-clamp-2 ${
                 isHero ? "text-xl sm:text-2xl" : "text-lg"
@@ -126,7 +129,7 @@ export function ArticleCard({
         </div>
 
         <p className="flex-1 text-sm leading-relaxed text-fin-text line-clamp-3">
-          {article.summary}
+          {enriched.summary}
         </p>
 
         <div className="space-y-3">
@@ -143,7 +146,7 @@ export function ArticleCard({
         </div>
 
         <div className="flex items-center justify-between gap-3">
-          <Link href={`/brief/${article.id}`} onClick={stashArticle} className="fin-link text-sm font-semibold">
+          <Link href={`/brief/${article.id}`} scroll={false} onClick={stashArticle} className="fin-link text-sm font-semibold">
             Read FinBrief summary →
           </Link>
           <div className="flex items-center gap-2">
