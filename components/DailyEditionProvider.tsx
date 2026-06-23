@@ -11,9 +11,8 @@ import {
 } from "react";
 import type { Brief } from "@/lib/types";
 import { countArticlesWithImageUrl } from "@/lib/article-image";
-import { enrichBrief } from "@/lib/article-analysis";
+import { enrichBrief, SUMMARY_COPY_VERSION } from "@/lib/article-analysis";
 import { DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
-import { shouldUpgradeEdition } from "@/lib/daily-edition";
 import {
   dailyEditionDateKey,
   dailyEditionRequestKey,
@@ -51,10 +50,6 @@ function enrichBriefs(briefs: Brief[]): Brief[] {
   return briefs.map(enrichBrief);
 }
 
-function idsSignature(items: Brief[]): string {
-  return items.map((item) => item.id).join("|");
-}
-
 function snapshotFromBriefs(
   briefs: Brief[],
   source: EditionDataSource,
@@ -74,6 +69,7 @@ function snapshotFromBriefs(
     source,
     cacheStatus,
     provider,
+    copyVersion: SUMMARY_COPY_VERSION,
   };
 }
 
@@ -217,17 +213,6 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
         }
         if (apiBriefs.length === 0) return;
 
-        const currentSnapshot = memorySnapshot;
-        const prevSig = idsSignature(briefsRef.current);
-        const nextSig = idsSignature(apiBriefs);
-        const upgrade = shouldUpgradeEdition({
-          currentBriefIds: prevSig,
-          nextBriefIds: nextSig,
-          currentCacheStatus: currentSnapshot?.cacheStatus,
-          currentProvider: currentSnapshot?.provider,
-          nextCacheStatus: payload.cacheStatus,
-          nextProvider: payload.provider,
-        });
         const snapshot = snapshotFromBriefs(
           apiBriefs,
           "daily_edition",
@@ -237,17 +222,8 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
           payload.provider
         );
         bootstrappedRef.current = true;
-        if (upgrade) {
-          commitSnapshot(snapshot);
-        } else {
-          setDebug({
-            source: "daily_edition",
-            savedArticleCount: snapshot.savedArticleCount,
-            articlesWithImageUrl: snapshot.articlesWithImageUrl,
-            cacheStatus: snapshot.cacheStatus,
-          });
-          setReady(true);
-        }
+        commitSnapshot(snapshot);
+        setReady(true);
         setPage(1);
       } finally {
         syncingRef.current = false;

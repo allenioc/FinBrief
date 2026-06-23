@@ -21,7 +21,9 @@ export function ArticleBriefClient({
   id: string;
   initialArticle: Brief | null;
 }) {
-  const [article, setArticle] = useState<Brief | null>(initialArticle);
+  const [article, setArticle] = useState<Brief | null>(() =>
+    initialArticle ? enrichBrief(initialArticle) : null
+  );
   const [resolved, setResolved] = useState<boolean>(Boolean(initialArticle));
 
   useEffect(() => {

@@ -1,4 +1,5 @@
 import type { Brief } from "./types";
+import { SUMMARY_COPY_VERSION } from "./article-analysis";
 
 export type EditionDataSource = "daily_edition" | "topic_filter" | "cache" | "session_storage";
 
@@ -12,6 +13,7 @@ export type DailyEditionSnapshot = {
   source: EditionDataSource;
   cacheStatus?: string;
   provider?: string;
+  copyVersion?: number;
 };
 
 const SESSION_PREFIX = "finbrief-daily-edition";
@@ -36,6 +38,7 @@ export function readEditionSnapshot(): DailyEditionSnapshot | null {
     const parsed = JSON.parse(raw) as DailyEditionSnapshot;
     if (
       parsed.editionDateKey !== dailyEditionDateKey() ||
+      parsed.copyVersion !== SUMMARY_COPY_VERSION ||
       !Array.isArray(parsed.briefs) ||
       parsed.briefs.length === 0
     ) {
