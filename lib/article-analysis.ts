@@ -444,89 +444,27 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function trimSummaryToWordTarget(paragraphs: string[], minWords: number, maxWords: number): string {
+function trimSummaryToWordTarget(paragraphs: string[], maxWords: number): string {
   let body = paragraphs.map((part) => normalizeWhitespace(part)).filter(Boolean).join(" ");
 
-  if (countWords(body) < minWords) {
-    const filler =
-      "Follow-up reporting may add detail that is not visible in the initial preview, so readers should treat this summary as orientation rather than a final conclusion.";
-    while (countWords(body) < minWords) {
-      body = `${body} ${filler}`;
-    }
-  }
+  if (countWords(body) <= maxWords) return body;
 
-  if (countWords(body) > maxWords) {
-    const words = body.split(/\s+/).slice(0, maxWords);
-    body = words.join(" ");
-    const lastPeriod = body.lastIndexOf(".");
-    body = lastPeriod > 0 ? body.slice(0, lastPeriod + 1) : `${body}.`;
-  }
-
-  return body;
+  const words = body.split(/\s+/).slice(0, maxWords);
+  body = words.join(" ");
+  const lastPeriod = body.lastIndexOf(".");
+  return lastPeriod > 0 ? body.slice(0, lastPeriod + 1) : `${body}.`;
 }
 
-function buildThemeDeepDive(ctx: ArticlePreviewContext): string[] {
-  const paragraphs: string[] = [];
-
-  if (ctx.themes.includes("earnings")) {
-    paragraphs.push(
-      "Earnings-related headlines usually connect to three investor questions: whether revenue and profit beat or missed expectations, whether management updated its outlook, and whether the market had already priced in the result before the release. A beat can still lead to a selloff if guidance softens, while a miss can rally if the bad news was already expected. That is why the headline alone rarely tells the full earnings story."
-    );
-    paragraphs.push(
-      "For fundamental investors, the most durable part of an earnings report is often the commentary about demand trends, margins, and capital allocation rather than a single quarterly figure. For passive holders of broad index funds, the story still matters because large index constituents can move SPY, QQQ, and sector ETFs when their results shift the aggregate earnings picture."
-    );
+function collectSourceSentences(ctx: ArticlePreviewContext): string[] {
+  const collected: string[] = [];
+  for (const sentence of ctx.sentences) {
+    if (isNearDuplicate(sentence, collected) || overlapsHeadline(sentence, ctx.headline)) continue;
+    collected.push(sentence);
   }
-
-  if (ctx.themes.includes("rates")) {
-    paragraphs.push(
-      "Macro and interest-rate stories matter because they change the discount rate investors use to value future corporate cash flows. When inflation, jobs, or central-bank communication shifts expectations for policy, bond yields often move first and equities second. Rate-sensitive sectors such as real estate, utilities, and long-duration growth stocks frequently react more sharply than the broad market."
-    );
-    paragraphs.push(
-      "Readers watching this theme should distinguish between the headline release and the trend. One CPI or jobs print rarely defines the entire cycle; markets care about whether data confirm or break a pattern the Fed has been emphasizing. That makes follow-up releases and official meeting statements as important as the initial report."
-    );
-  }
-
-  if (ctx.themes.includes("trade")) {
-    paragraphs.push(
-      "Trade-policy news can affect companies through multiple channels: direct tariffs on goods, restrictions on technology exports, supply-chain rerouting costs, and uncertainty that delays business investment. Even firms without direct international sales can feel indirect effects through input costs and customer demand."
-    );
-  }
-
-  if (ctx.themes.includes("merger")) {
-    paragraphs.push(
-      "Merger and acquisition headlines introduce event-driven uncertainty. Target companies often trade toward the proposed deal price, while acquirers can fall if investors question the strategic logic or financing. Regulatory review, shareholder votes, and financing conditions can take months to resolve, so the first announcement is usually only the opening chapter."
-    );
-  }
-
-  if (ctx.themes.includes("regulation")) {
-    paragraphs.push(
-      "Regulatory and legal developments can reshape compliance costs, product timelines, and competitive dynamics. Markets sometimes treat litigation headlines as noise until a court ruling, settlement, or agency action makes the financial impact quantifiable. That is especially true for class-action notices and investor-deadline advertisements that precede any finding of wrongdoing."
-    );
-  }
-
-  if (ctx.themes.includes("product")) {
-    paragraphs.push(
-      "Product and strategy announcements matter when they change a company's growth algorithm—new platforms, pricing models, major partnerships, or capacity investments. Investors typically ask whether the update expands the addressable market, protects existing share, or simply catches up to competitors who moved earlier."
-    );
-  }
-
-  if (ctx.themes.includes("market")) {
-    paragraphs.push(
-      "Broad market stories often describe index-level moves, volatility shifts, or cross-asset reactions rather than a single company catalyst. These reports can help explain the environment in which individual stock headlines land— for example, a strong earnings report may get less credit during a risk-off session driven by macro fears."
-    );
-  }
-
-  if (paragraphs.length === 0) {
-    paragraphs.push(
-      "Business headlines like this one usually fit into a wider mosaic of company performance, sector trends, and macro conditions. Even when the immediate market reaction seems modest, the topic can still be relevant for watchlists, sector exposure, and understanding which narratives investors are prioritizing this week."
-    );
-    paragraphs.push(describeStoryFocus(ctx));
-  }
-
-  return paragraphs;
+  return collected;
 }
 
-/** FinBrief summary: long-form editorial overview (~500–700 words). */
+/** FinBrief summary: source-grounded overview (~350–450 words). */
 export function buildFinBriefSummary(
   headline: string,
   excerpt: string,
@@ -534,66 +472,48 @@ export function buildFinBriefSummary(
   publishedAt?: string
 ): string {
   const ctx = buildArticlePreviewContext(headline, excerpt, source, publishedAt);
-  const articleType = inferArticleType(combinedText(headline, excerpt));
-  const why = buildWhyItMatters(headline, excerpt, articleType, source, publishedAt);
-  const who = buildWhoIsAffected(headline, excerpt, articleType, source, publishedAt);
-
   const paragraphs: string[] = [];
 
-  paragraphs.push(
-    `This FinBrief summary examines "${ctx.headline}," a report ${ctx.source ? `published by ${ctx.source}` : "from a financial publisher"}${formatPublishedContext(publishedAt)}. The goal is to explain what the available source material says, why investors might care, and what context helps interpret the headline without replacing the original reporting.`
-  );
-
-  paragraphs.push(pickEventSentence(ctx));
-
-  if (ctx.subjects.length > 0) {
+  if (ctx.source) {
     paragraphs.push(
-      `The story centers on ${formatSubjectList(ctx.subjects)}. When a development names specific companies, indexes, or policy themes this directly, markets often reprice those assets first and then look for spillover effects across suppliers, competitors, and related sectors.`
+      `${ctx.source} published "${ctx.headline}"${formatPublishedContext(publishedAt)}.`
     );
+  } else {
+    paragraphs.push(`The source article is titled "${ctx.headline}"${formatPublishedContext(publishedAt)}.`);
   }
 
-  for (const sentence of ctx.sentences) {
-    if (paragraphs.length >= 8) break;
-    if (isNearDuplicate(sentence, paragraphs) || overlapsHeadline(sentence, ctx.headline)) continue;
-    paragraphs.push(sentence);
+  paragraphs.push(...collectSourceSentences(ctx));
+
+  if (ctx.subjects.length > 0) {
+    const subjectSentence = ctx.sentences.find((sentence) =>
+      ctx.subjects.some((subject) => sentence.toLowerCase().includes(subject.toLowerCase()))
+    );
+    if (subjectSentence && !paragraphs.includes(subjectSentence)) {
+      paragraphs.push(subjectSentence);
+    }
   }
 
   if (ctx.limited) {
     paragraphs.push(
-      "The publisher preview available to FinBrief is short, which means this summary relies heavily on the headline framing and the excerpt that was supplied. That limitation is common with wire services, syndicated feeds, and paywalled articles where only the opening lines are visible before clicking through."
+      ctx.source
+        ? `The ${ctx.source} preview available to FinBrief contains only the headline and excerpt shown above.`
+        : "The publisher preview available to FinBrief contains only the headline and excerpt shown above."
     );
-    paragraphs.push(describeStoryFocus(ctx));
+  } else if (ctx.excerpt) {
+    paragraphs.push(
+      ctx.source
+        ? `The above passages are drawn from the ${ctx.source} preview supplied with this story.`
+        : "The above passages are drawn from the publisher preview supplied with this story."
+    );
   }
-
-  paragraphs.push(why);
-  paragraphs.push(who);
-
-  paragraphs.push(...buildThemeDeepDive(ctx));
-
-  paragraphs.push(
-    `From a market-process perspective, the first reaction to stories like this is often headline-driven. Traders may reposition quickly based on the direction implied by the title, while longer-horizon investors usually wait for confirmation in filings, management commentary, or follow-up coverage. That gap between initial price action and later validation is one reason FinBrief separates a quick headline read from a fuller summary like this one.`
-  );
-
-  paragraphs.push(
-    buildNeutralView() +
-      " In practice, that means treating the publisher's full article, any official company or government release, and subsequent data points as the confirmation layer rather than assuming the first summary captures the entire story."
-  );
-
-  paragraphs.push(
-    `Readers should also note what this summary cannot do. FinBrief does not reproduce the complete ${ctx.source || "publisher"} article, direct quotes beyond the excerpt, proprietary charts, or any paywalled analysis. When the underlying piece contains nuance—such as one-time charges, revised guidance, legal disclaimers, or methodological details in an economic report—those details may only appear in the source link.`
-  );
-
-  paragraphs.push(
-    `If you are building a view on ${ctx.subjects.length > 0 ? formatSubjectList(ctx.subjects) : "this topic"}, a practical next step is to read the original story, then compare it with adjacent coverage from other reputable outlets. Look for agreement on the core fact pattern and disagreement on interpretation; that difference often marks where genuine uncertainty remains. ${buildWatchBullet(ctx)}`
-  );
 
   if (ctx.source) {
     paragraphs.push(
-      `${ctx.source} remains the primary citation for the underlying reporting${formatPublishedContext(publishedAt)}. FinBrief organizes the preview into a longer educational narrative so you can decide whether the full article is worth your time, but the publisher should always be treated as the authoritative record of what was reported.`
+      `Read the full ${ctx.source} article for complete reporting, quotes, and any data not included in the preview.`
     );
   }
 
-  return trimSummaryToWordTarget(paragraphs, 500, 700);
+  return trimSummaryToWordTarget(paragraphs, 450);
 }
 
 /** Three useful bullets: what happened, why it matters, what to watch. */
@@ -816,23 +736,27 @@ export function parseSecuritiesLegalNotice(headline: string, excerpt: string): S
 function buildSecuritiesLegalSummary(
   details: SecuritiesNoticeDetails,
   source: string,
-  publishedAt?: string
+  publishedAt: string | undefined,
+  headline: string,
+  excerpt: string
 ): string {
   const tickerNote =
     details.tickers.length > 0 ? ` (${details.tickers.join(", ")})` : "";
+  const ctx = buildArticlePreviewContext(headline, excerpt, source, publishedAt);
   const paragraphs = [
-    `${details.lawFirm} published a ${details.actionLabel} on ${source || "a newswire"} regarding ${details.company}${tickerNote}. FinBrief flags this item because wire releases of this type appear frequently in finance feeds, but they are promotional legal notices rather than independent journalism.`,
-    "A securities class action notice is typically issued by a plaintiff-side law firm seeking shareholders who purchased shares during a defined period and allegedly suffered losses. The notice invites investors to contact the firm before a lead-plaintiff deadline. It does not mean a court has ruled that the company did anything wrong, and it does not guarantee that any recovery will occur.",
-    `For holders of ${details.company}${tickerNote}, the practical meaning is procedural: you may receive more mail, see additional headlines, and need to decide whether to ignore the notice, monitor court dockets, or consult your own legal or financial advisors. FinBrief does not provide legal advice and cannot determine eligibility from the preview alone.`,
-    "These releases often follow sharp stock declines because law firms market their services after volatility attracts attention. That timing can make the notices feel like major news even when the underlying business fundamentals have not changed overnight. Separating market narrative from legal process is important for long-term investors who do not want to react to every press release in their feed.",
-    "Lead-plaintiff status matters in U.S. class actions because the lead investor or group helps select counsel and influences litigation strategy. Competing firms sometimes publish similar notices about the same company around the same time, which is one reason readers may see multiple near-identical headlines with different deadlines or slightly different wording.",
-    "From a portfolio perspective, a legal notice is not the same as an earnings miss, a guidance cut, or a regulatory enforcement action with immediate financial consequences. Until a complaint survives dismissal, discovery proceeds, or a settlement is approved, the direct economic impact on the business can remain uncertain. Traders may still react to headline risk, but that reaction can fade if no new factual allegations emerge.",
-    "If you own the stock directly, consider whether the notice adds information beyond what you already knew from price action and prior disclosures. If you own the name only through a broad ETF, the exposure is indirect and usually small unless the company is a top holding. Either way, the authoritative documents are the court filings and company SEC disclosures, not the advertisement on the newswire.",
-    "FinBrief summarizes this notice so you can recognize the format quickly: who issued it, which company it references, and why it is not equivalent to investigative reporting. Read the original release for deadline dates, purchase-period definitions, and contact instructions if you believe you may be affected.",
-    `${details.lawFirm} remains the publisher of the underlying notice${formatPublishedContext(publishedAt)}. Treat this long summary as educational context only and rely on the source link plus qualified professionals for decisions about participation in any legal action.`,
+    `${details.lawFirm} published a ${details.actionLabel} on ${source || "a newswire"} regarding ${details.company}${tickerNote}.`,
+    `"${headlineCore(headline)}"`,
+    ...collectSourceSentences(ctx),
   ];
 
-  return trimSummaryToWordTarget(paragraphs, 500, 700);
+  if (ctx.source) {
+    paragraphs.push(
+      `The passages above come from the ${ctx.source} preview of this legal notice${formatPublishedContext(publishedAt)}.`
+    );
+    paragraphs.push(`Open the full ${ctx.source} release for deadline dates and eligibility details.`);
+  }
+
+  return trimSummaryToWordTarget(paragraphs, 450);
 }
 
 function buildSecuritiesLegalThirtySecond(details: SecuritiesNoticeDetails): string {
@@ -864,7 +788,13 @@ export function enrichArticleCopy(brief: Brief): Brief {
     return {
       ...brief,
       excerpt: buildSecuritiesLegalExcerpt(details, brief.source),
-      summary: buildSecuritiesLegalSummary(details, brief.source, brief.publishedAt),
+      summary: buildSecuritiesLegalSummary(
+        details,
+        brief.source,
+        brief.publishedAt,
+        brief.headline,
+        brief.excerpt
+      ),
       thirtySecondVersion: buildSecuritiesLegalThirtySecond(details),
       whatHappened: buildSecuritiesLegalExcerpt(details, brief.source),
       whyItMatters: buildSecuritiesLegalWhyItMatters(details),
