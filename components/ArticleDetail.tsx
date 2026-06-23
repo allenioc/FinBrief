@@ -6,7 +6,7 @@ import { formatDateTime } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
 import { enrichBriefImage } from "@/lib/article-image";
-import { enrichArticleCopy } from "@/lib/article-analysis";
+import { enrichArticleCopy, shouldShowDataSnapshot } from "@/lib/article-analysis";
 import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
 import { AssetTags } from "./AssetTags";
@@ -53,6 +53,12 @@ export function ArticleDetail({ article }: { article: Brief }) {
   const imageDisplay = enriched.imageDisplay;
   const watchlistItem = watchlistItemFromBrief(article);
   const quickBullets = parseThirtySecondBullets(enriched.thirtySecondVersion);
+  const showDataSnapshot = shouldShowDataSnapshot(
+    article.dataSnapshot,
+    article.headline,
+    article.excerpt,
+    article.ticker
+  );
 
   return (
     <div className="space-y-8">
@@ -118,8 +124,8 @@ export function ArticleDetail({ article }: { article: Brief }) {
                 <TooltipLabel label="Market impact" content={ANALYSIS_LABEL_TOOLTIPS.marketImpact} />
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <SentimentBadge sentiment={article.sentiment} />
-                <MarketImpactBadge impact={article.marketImpact} />
+                <SentimentBadge sentiment={enriched.sentiment} />
+                <MarketImpactBadge impact={enriched.marketImpact} />
                 <ConfidenceScore score={article.sentimentConfidence} />
               </div>
             </div>
@@ -146,7 +152,7 @@ export function ArticleDetail({ article }: { article: Brief }) {
         </footer>
       </blockquote>
 
-      <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className={`grid gap-8 ${showDataSnapshot ? "xl:grid-cols-[minmax(0,1fr)_300px]" : ""}`}>
         <div className="space-y-6 fin-prose mx-auto max-w-full xl:max-w-none">
           <Section title="FinBrief summary" variant="highlight">
             <p className="whitespace-pre-line">{enriched.summary}</p>
@@ -161,7 +167,7 @@ export function ArticleDetail({ article }: { article: Brief }) {
           </Section>
 
           <Section title="Why it matters">{enriched.whyItMatters}</Section>
-          <Section title="Who is affected?">{article.whoIsAffected}</Section>
+          <Section title="Who is affected?">{enriched.whoIsAffected}</Section>
 
           <div className="space-y-4">
             <h2 className="fin-section-title">Analysis</h2>
@@ -250,9 +256,11 @@ export function ArticleDetail({ article }: { article: Brief }) {
           </section>
         </div>
 
-        <div className="xl:sticky xl:top-28 xl:self-start">
-          <DataSnapshotPanel snapshot={article.dataSnapshot} />
-        </div>
+        {showDataSnapshot && (
+          <div className="xl:sticky xl:top-28 xl:self-start">
+            <DataSnapshotPanel snapshot={article.dataSnapshot} />
+          </div>
+        )}
       </div>
     </div>
   );
