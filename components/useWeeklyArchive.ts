@@ -56,7 +56,7 @@ export function useWeeklyArchive(enabled: boolean = true) {
       const localCache = readLocalWeekCache(weekKey);
 
       try {
-        const response = await fetch("/api/weekly-archive");
+        const response = await fetch("/api/weekly-archive", { cache: "default" });
         if (!response.ok) {
           throw new Error("Could not load weekly archive.");
         }

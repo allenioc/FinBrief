@@ -13,7 +13,7 @@ import { countArticlesWithImageUrl } from "@/lib/article-image";
 import { filterBriefsForTopic } from "@/lib/topic-stories";
 import { dateKeyFromFetchedAt, isLiveEditionPayload, isWithinSuccessFetchCooldown, msSinceFetchedAt } from "@/lib/daily-edition";
 import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
-import { saveDailyEditionForWeek, appendDailyEditionToWeek } from "@/lib/weekly-archive-store";
+import { saveDailyEditionForWeek, syncLiveEditionToWeekArchive, resolveWeeklyEditionDate } from "@/lib/weekly-archive-store";
 import type { Brief } from "@/lib/types";
 
 type CachedPayload = {
@@ -166,9 +166,13 @@ function resolveBestSavedEdition(
 async function serveSavedEditionResponse(
   today: string,
   best: { payload: CachedPayload; cacheStatus: string; fetchedAt: string },
-  reasonProviderFetchWasSkipped: string
+  reasonProviderFetchWasSkipped: string,
+  savedEditionDate?: string
 ) {
-  await appendDailyEditionToWeek(today, best.payload.briefs);
+  const editionDate = resolveWeeklyEditionDate(savedEditionDate, best.fetchedAt, today);
+  if (isLiveEditionPayload(best.payload)) {
+    await syncLiveEditionToWeekArchive(editionDate, best.payload.briefs);
+  }
   return NextResponse.json(
     withDebugFields(best.payload, {
       cacheStatus: best.cacheStatus,
@@ -567,7 +571,8 @@ export async function GET(request: NextRequest) {
           cacheStatus: `hit:${savedEdition.tier}`,
           fetchedAt: savedEdition.value.payload.fetchedAt,
         },
-        "saved_edition_for_today_exists"
+        "saved_edition_for_today_exists",
+        savedEdition.value.editionDate
       );
     }
 
@@ -582,6 +587,14 @@ export async function GET(request: NextRequest) {
     // 2) Recent provider failure: serve the newest saved data instead of retrying.
     if (retryAt > Date.now() && bestSaved) {
       const reasonSkipped = `recent_provider_failure_retry_in_${Math.ceil((retryAt - Date.now()) / 1000)}s`;
+      if (isLiveEditionPayload(bestSaved.payload)) {
+        const editionDate = resolveWeeklyEditionDate(
+          savedEdition?.value.editionDate,
+          bestSaved.fetchedAt,
+          today
+        );
+        await syncLiveEditionToWeekArchive(editionDate, bestSaved.payload.briefs);
+      }
       return NextResponse.json(
         withDebugFields(
           {
@@ -632,7 +645,8 @@ export async function GET(request: NextRequest) {
       return serveSavedEditionResponse(
         today,
         bestSaved,
-        `success_fetch_cooldown_${remainingSeconds}s_remaining`
+        `success_fetch_cooldown_${remainingSeconds}s_remaining`,
+        savedEdition?.value.editionDate
       );
     }
   } else {

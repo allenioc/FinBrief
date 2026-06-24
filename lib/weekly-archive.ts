@@ -61,7 +61,7 @@ export function localDateKey(reference: Date = new Date()): string {
   return formatDateKey(reference);
 }
 
-/** Calendar week starting Sunday in the user's local timezone. */
+/** Calendar week starting Sunday in the user's local timezone. Resets This Week each Sunday. */
 export function weekStartDate(reference: Date = new Date()): Date {
   const start = new Date(reference);
   start.setHours(0, 0, 0, 0);
