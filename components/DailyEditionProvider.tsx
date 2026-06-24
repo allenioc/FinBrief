@@ -16,6 +16,7 @@ import { DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
 import {
   dailyEditionDateKey,
   dailyEditionRequestKey,
+  isTrustedEditionSnapshot,
   readEditionSnapshot,
   writeEditionSnapshot,
   type DailyEditionSnapshot,
@@ -37,7 +38,6 @@ type DailyEditionContextValue = {
   hasMore: boolean;
   page: number;
   debug: DailyEditionDebug;
-  hydrateFromServer: (briefs: Brief[]) => void;
   syncEdition: (options?: { background?: boolean }) => Promise<void>;
   appendPage: (briefs: Brief[], hasMore: boolean, nextPage: number) => void;
 };
@@ -86,18 +86,22 @@ function msUntilNextLocalMidnight(): number {
   return Math.max(1000, next.getTime() - now.getTime());
 }
 
+function trustedMemorySnapshot(): DailyEditionSnapshot | null {
+  if (memorySnapshot && isTrustedEditionSnapshot(memorySnapshot)) {
+    return memorySnapshot;
+  }
+  return null;
+}
+
 export function DailyEditionProvider({ children }: { children: React.ReactNode }) {
   const todayKey = dailyEditionDateKey();
-  const initialSnapshot =
-    memorySnapshot && memorySnapshot.editionDateKey === todayKey && memorySnapshot.briefs.length > 0
-      ? memorySnapshot
-      : null;
+  const initialSnapshot = trustedMemorySnapshot();
 
   const [editionBriefs, setEditionBriefs] = useState<Brief[]>(() =>
     initialSnapshot ? enrichBriefs(initialSnapshot.briefs) : []
   );
   const [ready, setReady] = useState(() => Boolean(initialSnapshot));
-  const [syncing, setSyncing] = useState(false);
+  const [syncing, setSyncing] = useState(() => !initialSnapshot);
   const [fetchedAt, setFetchedAt] = useState<string | null>(() => initialSnapshot?.fetchedAt ?? null);
   const [hasMore, setHasMore] = useState(() => initialSnapshot?.hasMore ?? false);
   const [page, setPage] = useState(1);
@@ -139,6 +143,7 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
         cacheStatus: stored.cacheStatus,
       });
       setReady(true);
+      setSyncing(false);
     }
   }, [todayKey]);
 
@@ -155,23 +160,6 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
     });
     setReady(true);
   }, []);
-
-  const hydrateFromServer = useCallback(
-    (briefs: Brief[]) => {
-      if (briefs.length === 0) return;
-      if (briefsRef.current.length > 0 && bootstrappedRef.current) return;
-      const snapshot = snapshotFromBriefs(
-        briefs,
-        "daily_edition",
-        new Date().toISOString(),
-        false,
-        "server_hydrate"
-      );
-      bootstrappedRef.current = true;
-      commitSnapshot(snapshot);
-    },
-    [commitSnapshot]
-  );
 
   const syncEdition = useCallback(
     async (options?: { background?: boolean }) => {
@@ -193,7 +181,10 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
 
       try {
         const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
-        if (!response.ok) return;
+        if (!response.ok) {
+          setReady(true);
+          return;
+        }
         const payload = (await response.json()) as {
           briefs?: Brief[];
           fetchedAt?: string;
@@ -204,14 +195,28 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
           provider?: string;
         };
         const apiBriefs = enrichBriefs(payload.briefs ?? []);
+        const isMockPayload = payload.provider === "mock" || payload.provider === "error";
+
+        if (isMockPayload) {
+          if (briefsRef.current.length === 0) {
+            setEditionBriefs([]);
+          }
+          setReady(true);
+          return;
+        }
+
         if (apiBriefs.length === 0 && briefsRef.current.length > 0) {
           setDebug((prev) => ({
             ...prev,
             cacheStatus: payload.cacheStatus ?? prev.cacheStatus,
           }));
+          setReady(true);
           return;
         }
-        if (apiBriefs.length === 0) return;
+        if (apiBriefs.length === 0) {
+          setReady(true);
+          return;
+        }
 
         const snapshot = snapshotFromBriefs(
           apiBriefs,
@@ -223,7 +228,6 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
         );
         bootstrappedRef.current = true;
         commitSnapshot(snapshot);
-        setReady(true);
         setPage(1);
       } finally {
         syncingRef.current = false;
@@ -248,7 +252,8 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
         memorySnapshot?.source ?? "daily_edition",
         memorySnapshot?.fetchedAt ?? new Date().toISOString(),
         nextHasMore,
-        memorySnapshot?.cacheStatus
+        memorySnapshot?.cacheStatus,
+        memorySnapshot?.provider
       );
       applySnapshot(snapshot);
       setDebug({
@@ -275,6 +280,8 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
       midnightTimer = window.setTimeout(async () => {
         memorySnapshot = null;
         bootstrappedRef.current = false;
+        setReady(false);
+        setSyncing(true);
         await syncEdition();
         scheduleMidnightRefresh();
       }, msUntilNextLocalMidnight());
@@ -294,22 +301,10 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
       hasMore,
       page,
       debug,
-      hydrateFromServer,
       syncEdition,
       appendPage,
     }),
-    [
-      editionBriefs,
-      ready,
-      syncing,
-      fetchedAt,
-      hasMore,
-      page,
-      debug,
-      hydrateFromServer,
-      syncEdition,
-      appendPage,
-    ]
+    [editionBriefs, ready, syncing, fetchedAt, hasMore, page, debug, syncEdition, appendPage]
   );
 
   return <DailyEditionContext.Provider value={value}>{children}</DailyEditionContext.Provider>;

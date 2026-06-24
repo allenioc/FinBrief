@@ -14,7 +14,23 @@ import { ArticleCard } from "./ArticleCard";
 const EMPTY_STATE_MESSAGE =
   "This week's archive is empty for now. As new daily editions are saved, their stories will appear here automatically.";
 
-function currentWeekSnapshotArchive(): WeeklyArchivePayload | null {
+function WeeklyArchiveSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse" aria-hidden="true">
+      <div className="flex gap-3">
+        <div className="h-3 w-28 rounded bg-fin-muted" />
+        <div className="h-3 w-36 rounded bg-fin-muted" />
+      </div>
+      <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+        {[0, 1, 2, 3, 4, 5].map((item) => (
+          <div key={item} className="fin-card h-72 rounded-panel bg-fin-muted" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function trustedSnapshotArchive(): WeeklyArchivePayload | null {
   const snapshot = readEditionSnapshot();
   if (!snapshot?.briefs.length) return null;
   if (!isDateKeyInCurrentWeek(snapshot.editionDateKey)) return null;
@@ -22,8 +38,8 @@ function currentWeekSnapshotArchive(): WeeklyArchivePayload | null {
 }
 
 export function WeeklyArchiveFeed() {
-  const [archive, setArchive] = useState<WeeklyArchivePayload | null>(() => currentWeekSnapshotArchive());
-  const [loading, setLoading] = useState(() => !currentWeekSnapshotArchive()?.storyCount);
+  const [archive, setArchive] = useState<WeeklyArchivePayload | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,7 +58,7 @@ export function WeeklyArchiveFeed() {
         setArchive(payload);
       } catch {
         if (cancelled) return;
-        const snapshotArchive = currentWeekSnapshotArchive();
+        const snapshotArchive = trustedSnapshotArchive();
         if (snapshotArchive?.storyCount) {
           setArchive(snapshotArchive);
         } else {
@@ -64,10 +80,8 @@ export function WeeklyArchiveFeed() {
   const storyCount = archive?.storyCount ?? 0;
   const weeklyStories = archive?.days.flatMap((day) => day.stories) ?? [];
 
-  if (loading && !archive?.storyCount) {
-    return (
-      <p className="fin-panel py-12 text-center text-sm text-fin-subtle">Loading this week&apos;s archive…</p>
-    );
+  if (loading) {
+    return <WeeklyArchiveSkeleton />;
   }
 
   if (error && !archive?.storyCount) {

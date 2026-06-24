@@ -6,7 +6,6 @@ import { RecommendedTopics } from "@/components/RecommendedTopics";
 import { NewsletterWaitlist } from "@/components/NewsletterWaitlist";
 import { SearchBar } from "@/components/SearchBar";
 import { WatchlistHighlights } from "@/components/WatchlistHighlights";
-import { getBriefs } from "@/lib/briefs";
 import { TRENDING_SEARCHES } from "@/lib/mock-data";
 import { BRAND } from "@/lib/theme";
 
@@ -17,7 +16,6 @@ interface HomeProps {
 export default async function HomePage({ searchParams }: HomeProps) {
   const params = await searchParams;
   const query = params.q?.trim() ?? "";
-  const initialBriefs = await getBriefs("");
   const isTopicView = query.length > 0;
   const title = isTopicView ? `${query} news feed` : "Understand markets with clarity";
   const description = isTopicView
@@ -61,7 +59,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
           </Link>
         </div>
         <Suspense fallback={<div className="fin-panel h-48 animate-pulse rounded-panel bg-fin-muted" />}>
-          <DashboardTabs initialBriefs={initialBriefs} query={query} />
+          <DashboardTabs query={query} />
         </Suspense>
       </section>
 

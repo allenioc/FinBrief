@@ -30,18 +30,23 @@ export function dailyEditionRequestKey(): string {
   return `business-news-feed-${dailyEditionDateKey()}`;
 }
 
+export function isTrustedEditionSnapshot(snapshot: DailyEditionSnapshot | null | undefined): boolean {
+  if (!snapshot) return false;
+  if (snapshot.editionDateKey !== dailyEditionDateKey()) return false;
+  if (snapshot.copyVersion !== SUMMARY_COPY_VERSION) return false;
+  if (!Array.isArray(snapshot.briefs) || snapshot.briefs.length === 0) return false;
+  if (snapshot.cacheStatus === "server_hydrate") return false;
+  if (snapshot.provider === "mock" || snapshot.provider === "error") return false;
+  return true;
+}
+
 export function readEditionSnapshot(): DailyEditionSnapshot | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = sessionStorage.getItem(`${SESSION_PREFIX}::${dailyEditionDateKey()}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as DailyEditionSnapshot;
-    if (
-      parsed.editionDateKey !== dailyEditionDateKey() ||
-      parsed.copyVersion !== SUMMARY_COPY_VERSION ||
-      !Array.isArray(parsed.briefs) ||
-      parsed.briefs.length === 0
-    ) {
+    if (!isTrustedEditionSnapshot(parsed)) {
       return null;
     }
     return parsed;

@@ -14,13 +14,26 @@ import { useDailyEdition } from "./DailyEditionProvider";
 import { useWatchlist } from "./WatchlistProvider";
 import { ArticleCard } from "./ArticleCard";
 
-export function DashboardFeed({
-  initialBriefs,
-  query,
-}: {
-  initialBriefs: Brief[];
-  query: string;
-}) {
+function DashboardFeedSkeleton() {
+  return (
+    <div className="space-y-8 animate-pulse" aria-hidden="true">
+      <div className="space-y-3">
+        <div className="h-3 w-40 rounded bg-fin-muted" />
+        <div className="h-3 w-56 rounded bg-fin-muted" />
+      </div>
+      <div className="space-y-4">
+        <div className="h-5 w-32 rounded bg-fin-muted" />
+        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2, 3, 4, 5].map((item) => (
+            <div key={item} className="fin-card h-72 rounded-panel bg-fin-muted" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function DashboardFeed({ query }: { query: string }) {
   const {
     editionBriefs,
     ready,
@@ -28,7 +41,6 @@ export function DashboardFeed({
     fetchedAt,
     hasMore,
     page,
-    hydrateFromServer,
     appendPage,
   } = useDailyEdition();
   const { items: watchlistItems } = useWatchlist();
@@ -38,10 +50,6 @@ export function DashboardFeed({
   const [apiError, setApiError] = useState<string | null>(null);
   const topicQuery = query.trim();
   const isTopicView = topicQuery.length > 0;
-
-  useEffect(() => {
-    hydrateFromServer(initialBriefs);
-  }, [hydrateFromServer, initialBriefs]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -71,8 +79,7 @@ export function DashboardFeed({
   const hasVisibleStories = isTopicView
     ? topicStories.length > 0
     : groupedSections.some((section) => section.stories.length > 0);
-  const showStories = hasEditionStories && (ready || hasVisibleStories);
-  const showLoading = !showStories && !ready && syncing;
+  const showLoading = !ready;
 
   const handleLoadMore = useCallback(async () => {
     if (isTopicView) return;
@@ -107,15 +114,21 @@ export function DashboardFeed({
 
   return (
     <div className="space-y-6">
+      {showLoading ? (
+        <DashboardFeedSkeleton />
+      ) : (
+        <>
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-fin-subtle">
           <span className="font-semibold text-fin-navy">Daily edition</span>
-          <span>{formatLastUpdated(fetchedAt ?? new Date().toISOString())}</span>
-          <span>
-            {isTopicView
-              ? `${topicStories.length} topic ${topicStories.length === 1 ? "story" : "stories"}`
-              : `${editionBriefs.length} stories`}
-          </span>
+          {fetchedAt && <span>{formatLastUpdated(fetchedAt)}</span>}
+          {hasEditionStories && (
+            <span>
+              {isTopicView
+                ? `${topicStories.length} topic ${topicStories.length === 1 ? "story" : "stories"}`
+                : `${editionBriefs.length} stories`}
+            </span>
+          )}
         </div>
         <p className="text-xs text-fin-subtle">
           Daily edition updates once per day.
@@ -140,9 +153,7 @@ export function DashboardFeed({
         </div>
       )}
 
-      {showLoading ? (
-        <p className="fin-panel py-12 text-center text-sm text-fin-subtle">Loading stories...</p>
-      ) : isTopicView && topicStories.length === 0 && hasEditionStories ? (
+      {isTopicView && topicStories.length === 0 && hasEditionStories ? (
         <div className="fin-panel py-12 text-center">
           <p className="text-sm font-medium text-fin-navy">No stories for {topicQuery} in today&apos;s edition</p>
           <p className="mt-2 text-sm text-fin-subtle">
@@ -222,6 +233,8 @@ export function DashboardFeed({
             {isLoadingMore ? "Loading..." : "Load more stories"}
           </button>
         </div>
+      )}
+        </>
       )}
     </div>
   );

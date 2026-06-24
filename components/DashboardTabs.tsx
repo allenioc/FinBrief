@@ -4,15 +4,8 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { DashboardFeed } from "./DashboardFeed";
 import { WeeklyArchiveFeed } from "./WeeklyArchiveFeed";
-import type { Brief } from "@/lib/types";
 
-export function DashboardTabs({
-  initialBriefs,
-  query,
-}: {
-  initialBriefs: Brief[];
-  query: string;
-}) {
+export function DashboardTabs({ query }: { query: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const isTopicView = query.trim().length > 0;
@@ -69,7 +62,7 @@ export function DashboardTabs({
       {activeTab === "week" && !isTopicView ? (
         <WeeklyArchiveFeed />
       ) : (
-        <DashboardFeed initialBriefs={initialBriefs} query={query} />
+        <DashboardFeed query={query} />
       )}
     </div>
   );
