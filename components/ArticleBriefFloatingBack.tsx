@@ -125,8 +125,8 @@ export function ArticleBriefFloatingBack({ fallbackHref }: { fallbackHref: strin
       }`}
       style={{
         left: "max(1rem, env(safe-area-inset-left))",
-        // Below mobile shell nav (3.5rem) + sticky TopBar with search (4.5rem) + spacing
-        top: "calc(env(safe-area-inset-top, 0px) + 8.75rem)",
+        // Just below mobile nav (3.5rem) + sticky TopBar/search (4.5rem) + tight spacing
+        top: "calc(env(safe-area-inset-top, 0px) + 8.25rem)",
       }}
     >
       <ChevronLeftIcon />
