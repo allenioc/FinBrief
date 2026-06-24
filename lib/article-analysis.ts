@@ -1170,7 +1170,7 @@ function summarizeExcerptFact(sentence: string, entity: string, headline: string
   const subject = entity || extractPreviewOrganizations(prepared)[0] || "The parties named in the report";
 
   if (/\bfacing a potential\b/i.test(prepared) && amountMatch) {
-    return ensurePeriod(`${subject} could face a potential payout of ${amountMatch[1]}, according to the preview`);
+    return ensurePeriod(`${subject} could face a potential payout of ${amountMatch[1]}`);
   }
   if (/\boutperform(?:ing|ed)? expectations\b/i.test(prepared)) {
     return ensurePeriod(`${subject} posted results in which at least one major business line outperformed expectations`);
@@ -1413,14 +1413,262 @@ function extractPreviewFacts(headline: string, excerpt: string): PreviewFacts {
   };
 }
 
-const SUMMARY_TARGET_MIN = 350;
-const SUMMARY_TARGET_MAX = 450;
+const SUMMARY_WORD_TARGET_MIN = 250;
+const SUMMARY_WORD_TARGET_MAX = 350;
 const SUMMARY_FALLBACK_MIN = 120;
+const SUMMARY_PARAGRAPH_SENTENCE_MIN = 3;
+const SUMMARY_PARAGRAPH_SENTENCE_MAX = 5;
 
 /** Bump when Article Brief copy rules change so client caches refresh. */
-export const SUMMARY_COPY_VERSION = 3;
+export const SUMMARY_COPY_VERSION = 4;
 
 const SUMMARY_PARAGRAPH_COUNT = 3;
+
+function isSummaryMetaCommentary(sentence: string): boolean {
+  const lower = sentence.toLowerCase();
+  return (
+    /\bthe preview\b/.test(lower) ||
+    /\bthis preview\b/.test(lower) ||
+    /\bavailable preview\b/.test(lower) ||
+    /\bshort preview\b/.test(lower) ||
+    /\barticle preview\b/.test(lower) ||
+    /\bsource preview\b/.test(lower) ||
+    /\bin the excerpt\b/.test(lower) ||
+    /\bthis excerpt\b/.test(lower) ||
+    /\bthe excerpt\b/.test(lower) ||
+    /\bavailable source material\b/.test(lower) ||
+    /\bdoes not include the full\b/.test(lower) ||
+    /\bfinbrief summarizes\b/.test(lower) ||
+    /\blinked source article\b/.test(lower) ||
+    /\bfuller source article\b/.test(lower) ||
+    /\bfull published article\b/.test(lower) ||
+    /\bopen the source link\b/.test(lower) ||
+    /\bthe available preview\b/.test(lower) ||
+    /\bappears to cover\b/.test(lower) ||
+    /\bframes the story around\b/.test(lower) ||
+    /\bcaptures the main factual points\b/.test(lower) ||
+    /\bavailable reporting preview\b/.test(lower)
+  );
+}
+
+function acceptSummarySentence(sentence: string, headline: string, existing: string[]): boolean {
+  const cleaned = normalizeWhitespace(sentence);
+  if (!cleaned || countWords(cleaned) < 6) return false;
+  if (isSummaryBoilerplate(cleaned)) return false;
+  if (isSummaryMetaCommentary(cleaned)) return false;
+  if (overlapsHeadline(cleaned, headline)) return false;
+  if (isSubstantiveDuplicate(cleaned, existing)) return false;
+  return true;
+}
+
+function absorbSummarySentences(
+  target: string[],
+  source: string | string[],
+  headline: string,
+  maxSentences?: number
+): void {
+  const parts = Array.isArray(source) ? source : [source];
+  for (const part of parts) {
+    if (!part) continue;
+    if (maxSentences !== undefined && target.length >= maxSentences) break;
+    for (const sentence of splitSentences(part)) {
+      if (maxSentences !== undefined && target.length >= maxSentences) break;
+      if (acceptSummarySentence(sentence, headline, target)) {
+        target.push(ensurePeriod(sentence));
+      }
+    }
+  }
+}
+
+function filterExpansionCandidates(candidates: string[], headline: string): string[] {
+  const accepted: string[] = [];
+  for (const candidate of candidates) {
+    for (const sentence of splitSentences(candidate)) {
+      if (acceptSummarySentence(sentence, headline, accepted)) {
+        accepted.push(ensurePeriod(sentence));
+      }
+    }
+  }
+  return accepted;
+}
+
+function joinSummarySentences(
+  sentences: string[],
+  minSentences: number,
+  maxSentences: number,
+  pool: string[],
+  poolOffset: number,
+  headline: string
+): string {
+  const kept = [...sentences];
+  let poolIndex = poolOffset;
+  while (kept.length < minSentences && poolIndex < pool.length) {
+    const candidate = pool[poolIndex];
+    poolIndex += 3;
+    if (acceptSummarySentence(candidate, headline, kept)) {
+      kept.push(candidate);
+    }
+  }
+  return normalizeWhitespace(kept.slice(0, maxSentences).join(" "));
+}
+
+function expandThreeParagraphsToWordTarget(
+  paragraphs: string[],
+  minWords: number,
+  maxWords: number,
+  pool: string[],
+  headline: string
+): string[] {
+  const parts = paragraphs.map((paragraph) => normalizeWhitespace(paragraph));
+  while (parts.length < SUMMARY_PARAGRAPH_COUNT) parts.push("");
+
+  let poolIndex = 0;
+  let totalWords = countWords(parts.join(" "));
+  while (totalWords < minWords && poolIndex < pool.length) {
+    const paragraphIndex = poolIndex % SUMMARY_PARAGRAPH_COUNT;
+    const candidate = pool[poolIndex];
+    poolIndex += 1;
+    const existing = splitSentences(parts[paragraphIndex]).filter(Boolean);
+    if (existing.length >= SUMMARY_PARAGRAPH_SENTENCE_MAX) continue;
+    if (!acceptSummarySentence(candidate, headline, existing)) continue;
+    parts[paragraphIndex] = normalizeWhitespace([...existing, candidate].join(" "));
+    totalWords = countWords(parts.join(" "));
+  }
+
+  while (countWords(parts.join(" ")) > maxWords) {
+    let dropIndex = 0;
+    let longest = 0;
+    for (let index = 0; index < SUMMARY_PARAGRAPH_COUNT; index += 1) {
+      const length = splitSentences(parts[index]).length;
+      if (length > longest) {
+        longest = length;
+        dropIndex = index;
+      }
+    }
+    const sentences = splitSentences(parts[dropIndex]);
+    if (sentences.length <= 1) break;
+    parts[dropIndex] = normalizeWhitespace(sentences.slice(0, -1).join(" "));
+  }
+
+  return parts.slice(0, SUMMARY_PARAGRAPH_COUNT);
+}
+
+function buildCleanWhatHappenedSentences(
+  ctx: ArticlePreviewContext,
+  facts: PreviewFacts,
+  entity: string,
+  headline: string,
+  source: string,
+  publishedAt?: string
+): string[] {
+  const sentences: string[] = [];
+  const when = formatPublishedContext(publishedAt);
+  const topicLabel =
+    facts.topicTerms.length > 0 ? facts.topicTerms.join(" and ") : facts.headlineTopic;
+
+  if (entity && ctx.themes.includes("earnings")) {
+    sentences.push(
+      ensurePeriod(`${entity} moved into focus after releasing quarterly results${when}`)
+    );
+  } else if (entity) {
+    sentences.push(
+      ensurePeriod(`${entity} is at the center of the development reported${source ? ` by ${source}` : ""}${when}`)
+    );
+  } else if (topicLabel) {
+    sentences.push(ensurePeriod(`Reporting on ${topicLabel} describes a fresh development${when}`));
+  }
+
+  absorbSummarySentences(
+    sentences,
+    collectParaphrasedExcerptSentences(headline, ctx.excerpt, entity).slice(0, 2),
+    headline,
+    2
+  );
+
+  if (facts.organizations.length > 0) {
+    absorbSummarySentences(
+      sentences,
+      `${facts.organizations[0]} is named directly in the reporting as part of the story.`,
+      headline,
+      SUMMARY_PARAGRAPH_SENTENCE_MAX
+    );
+  }
+
+  return sentences;
+}
+
+function buildCleanSignificanceSentences(
+  ctx: ArticlePreviewContext,
+  facts: PreviewFacts,
+  entity: string,
+  headline: string,
+  excerpt: string,
+  financeRelated: boolean
+): string[] {
+  const sentences: string[] = [];
+  const topicLabel = facts.topicTerms.length > 0 ? facts.topicTerms.join(" and ") : facts.headlineTopic;
+
+  if (financeRelated && facts.amounts.some((amount) => /\bbillion|bn|million|m\b/i.test(amount))) {
+    const largeAmount =
+      facts.amounts.find((amount) => /\bbillion|bn|million|m\b/i.test(amount)) ?? facts.amounts[0];
+    sentences.push(
+      ensurePeriod(`A figure on the order of ${largeAmount} would be material if the reported payout or exposure holds`)
+    );
+  }
+
+  if (financeRelated && ctx.themes.includes("rates")) {
+    sentences.push(
+      ensurePeriod(
+        "Policy-sensitive assets may react if investors reassess the timing of interest-rate cuts"
+      )
+    );
+  } else if (financeRelated && entity && ctx.themes.includes("earnings")) {
+    sentences.push(
+      ensurePeriod(
+        `${entity}'s reported figures give shareholders a fresh checkpoint on business momentum and guidance risk`
+      )
+    );
+  } else if (financeRelated && topicLabel) {
+    sentences.push(
+      ensurePeriod(`For finance readers, ${topicLabel} is the main lens for interpreting the reported figures`)
+    );
+  }
+
+  if (facts.hasWarning) {
+    sentences.push(
+      ensurePeriod(
+        "Official warning language suggests regulators, lenders, or officials view the issue as elevated rather than routine"
+      )
+    );
+  }
+
+  if (financeRelated && /\bguidance|outlook|forecast|expects|expected\b/i.test(`${headline} ${excerpt}`)) {
+    sentences.push(
+      ensurePeriod("Investors should watch whether management guidance or analyst expectations shift after the update")
+    );
+  } else if (financeRelated && entity) {
+    sentences.push(
+      ensurePeriod(`Shareholders and analysts covering ${entity} are the most likely audience for the next disclosure`)
+    );
+  } else if (!financeRelated) {
+    const civic = extractCivicAffectedParties(headline, excerpt);
+    if (civic.length > 0) {
+      sentences.push(
+        ensurePeriod(`The development has the most immediate relevance for ${formatSubjectList(civic)}`)
+      );
+    }
+  }
+
+  if (ctx.themes.includes("merger")) {
+    sentences.push(
+      ensurePeriod(
+        "The next regulatory filing, counteroffer, or company statement will show whether the deal is advancing or stalling"
+      )
+    );
+  }
+
+  return sentences;
+}
 
 function mergeParagraphSentences(...parts: string[]): string {
   const sentences: string[] = [];
@@ -1451,7 +1699,7 @@ function resolveSummaryWordTarget(headline: string, excerpt: string): number {
   const prepared = prepareExcerptForSummary(excerpt);
   if (!normalizeWhitespace(headline)) return SUMMARY_FALLBACK_MIN;
   if (!prepared || prepared === "No summary available from provider.") return SUMMARY_FALLBACK_MIN;
-  return SUMMARY_TARGET_MIN;
+  return SUMMARY_WORD_TARGET_MIN;
 }
 
 function composeBriefParagraphs(sections: string[]): string[] {
@@ -2668,46 +2916,104 @@ export function buildFinBriefSummary(
   const ctx = buildArticlePreviewContext(headline, excerpt, source, publishedAt);
   const entity = extractPrimaryEntity(headline, excerpt);
   const facts = extractPreviewFacts(headline, excerpt);
-  const maxSentences = ctx.limited ? 2 : 3;
+  const minSentences = ctx.limited ? 2 : SUMMARY_PARAGRAPH_SENTENCE_MIN;
+  const maxSentences = ctx.limited ? 3 : SUMMARY_PARAGRAPH_SENTENCE_MAX;
+  const minWords = ctx.limited ? SUMMARY_FALLBACK_MIN : SUMMARY_WORD_TARGET_MIN;
+  const maxWords = ctx.limited ? 180 : SUMMARY_WORD_TARGET_MAX;
 
-  const whatHappened = limitParagraphSentences(
-    buildWhatHappenedParagraph(ctx, facts, entity, headline) || ensurePeriod(describeStoryFocus(ctx)),
-    maxSentences
+  const expansionPool = filterExpansionCandidates(
+    [
+      ...buildCrossFactSentences(facts, headline, excerpt, entity, financeRelated),
+      ...buildSupplementaryBriefSentences(ctx, facts, entity, headline, excerpt, financeRelated),
+      ...generateFactExpansionSentences(ctx, facts, entity, headline, excerpt, financeRelated, []),
+      ...collectParaphrasedExcerptSentences(headline, excerpt, entity),
+      ...buildCleanSignificanceSentences(ctx, facts, entity, headline, excerpt, financeRelated),
+    ],
+    headline
   );
 
-  const keyDetails = limitParagraphSentences(
-    mergeParagraphSentences(
-      buildKeyDetailsParagraph(headline, excerpt, ctx, facts, entity),
-      buildInvolvedPartiesParagraph(ctx, facts, entity)
-    ) || buildInvolvedPartiesParagraph(ctx, facts, entity),
-    maxSentences
+  const paragraphOne: string[] = [];
+  absorbSummarySentences(
+    paragraphOne,
+    buildCleanWhatHappenedSentences(ctx, facts, entity, headline, source, publishedAt),
+    headline
+  );
+  absorbSummarySentences(paragraphOne, buildInvolvedPartiesParagraph(ctx, facts, entity), headline);
+
+  const paragraphTwo: string[] = [];
+  absorbSummarySentences(
+    paragraphTwo,
+    collectParaphrasedExcerptSentences(headline, excerpt, entity),
+    headline
+  );
+  absorbSummarySentences(
+    paragraphTwo,
+    buildKeyDetailsParagraph(headline, excerpt, ctx, facts, entity),
+    headline
+  );
+  absorbSummarySentences(
+    paragraphTwo,
+    buildSupplementaryBriefSentences(ctx, facts, entity, headline, excerpt, financeRelated),
+    headline
   );
 
-  const significance = limitParagraphSentences(
-    mergeParagraphSentences(
-      buildBriefContextParagraph(ctx, facts, entity, financeRelated),
-      buildWatchNextParagraph(ctx, facts, entity, financeRelated)
-    ) || buildWatchNextParagraph(ctx, facts, entity, financeRelated),
-    maxSentences
+  const paragraphThree: string[] = [];
+  absorbSummarySentences(
+    paragraphThree,
+    buildCleanSignificanceSentences(ctx, facts, entity, headline, excerpt, financeRelated),
+    headline
+  );
+  absorbSummarySentences(
+    paragraphThree,
+    buildWatchNextParagraph(ctx, facts, entity, financeRelated),
+    headline
+  );
+  absorbSummarySentences(
+    paragraphThree,
+    buildThemeExpansionSentences(ctx, headline, excerpt, entity, financeRelated),
+    headline
   );
 
-  const filled = [whatHappened, keyDetails, significance].map((paragraph, index) => {
+  let paragraphs = [
+    joinSummarySentences(paragraphOne, minSentences, maxSentences, expansionPool, 0, headline),
+    joinSummarySentences(paragraphTwo, minSentences, maxSentences, expansionPool, 1, headline),
+    joinSummarySentences(paragraphThree, minSentences, maxSentences, expansionPool, 2, headline),
+  ];
+
+  paragraphs = expandThreeParagraphsToWordTarget(paragraphs, minWords, maxWords, expansionPool, headline);
+
+  const filled = paragraphs.map((paragraph, index) => {
     if (paragraph) return paragraph;
-    if (index === 0) return ensurePeriod(describeStoryFocus(ctx));
-    if (index === 1) {
-      return ensurePeriod(
-        entity
-          ? `${entity} and the institutions named in the preview are the main actors described in the available reporting.`
-          : "The preview highlights the people, institutions, or figures most directly tied to the reported development."
+    if (index === 0) {
+      const fallback = buildCleanWhatHappenedSentences(
+        ctx,
+        facts,
+        entity,
+        headline,
+        source,
+        publishedAt
       );
+      const text = normalizeWhitespace(fallback.slice(0, minSentences).join(" "));
+      if (text) return text;
+      const topic = facts.headlineTopic || "The story";
+      return ensurePeriod(`${topic} reflects a reported development${formatPublishedContext(publishedAt)}.`);
     }
-    return ensurePeriod(
-      ctx.limited
-        ? "The linked source article should add timeline and procedural detail missing from this preview."
-        : financeRelated
-          ? "Finance readers should treat this preview as an early read and watch for the next official update or filing."
-          : "Readers should watch for the next published update that confirms timing, scope, or official response."
-    );
+    if (index === 1) {
+      return entity
+        ? ensurePeriod(
+            `${entity} and the other parties named in the reporting are the central figures in the development.`
+          )
+        : ensurePeriod(
+            "The reporting points to the people and institutions most directly connected to the event."
+          );
+    }
+    return financeRelated
+      ? ensurePeriod(
+          "Investors should watch for the next official update, filing, or market reaction that confirms the direction of the story."
+        )
+      : ensurePeriod(
+          "Readers should watch for follow-up reporting that confirms timing, scope, or official response."
+        );
   });
 
   return composeThreeParagraphSummary(filled);
@@ -2730,14 +3036,14 @@ function buildThirtySecondEventBullet(
 
   if (facts.hasWarning && facts.quotedPhrases.length > 0 && facts.headlineTopic) {
     return cleanBullet(
-      `${facts.headlineTopic} saw an update accompanied by a "${facts.quotedPhrases[0]}" warning in the preview`,
+      `${facts.headlineTopic} saw an update accompanied by a "${facts.quotedPhrases[0]}" warning`,
       140
     ).replace(/\.$/, "");
   }
 
   if (facts.amounts.length > 0 && facts.topicTerms.length > 0) {
     return cleanBullet(
-      `The preview links ${facts.topicTerms.join(" and ")} to figures including ${facts.amounts[0]}`,
+      `Reporting links ${facts.topicTerms.join(" and ")} to figures including ${facts.amounts[0]}`,
       140
     ).replace(/\.$/, "");
   }
@@ -2750,7 +3056,7 @@ function buildThirtySecondEventBullet(
   }
 
   if (facts.headlineTopic) {
-    return cleanBullet(`The preview covers ${facts.headlineTopic}`, 140).replace(/\.$/, "");
+    return cleanBullet(`The story covers ${facts.headlineTopic}`, 140).replace(/\.$/, "");
   }
 
   return cleanBullet(`The report covers ${headline.toLowerCase()}`, 140).replace(/\.$/, "");
@@ -2767,13 +3073,13 @@ function buildThirtySecondStakeBullet(
   void financeRelated;
   if (facts.organizations.length > 0 && facts.amounts.length > 0) {
     return cleanBullet(
-      `${facts.organizations[0]} are tied to a potential ${facts.amounts[facts.amounts.length - 1]} exposure in the excerpt`,
+      `${facts.organizations[0]} are tied to a potential ${facts.amounts[facts.amounts.length - 1]} exposure`,
       140
     ).replace(/\.$/, "");
   }
 
   if (entity) {
-    return cleanBullet(`${entity} is named directly in the available preview`, 140).replace(/\.$/, "");
+    return cleanBullet(`${entity} is named directly in the reporting`, 140).replace(/\.$/, "");
   }
 
   const civic = extractCivicAffectedParties(headline, excerpt);
@@ -2782,17 +3088,17 @@ function buildThirtySecondStakeBullet(
   }
 
   if (facts.amounts.length > 0) {
-    return cleanBullet(`The cited ${facts.amounts[0]} figure sets the scale discussed in the preview`, 140).replace(
+    return cleanBullet(`The cited ${facts.amounts[0]} figure sets the scale discussed in the story`, 140).replace(
       /\.$/,
       ""
     );
   }
 
   if (ctx.subjects.length > 0) {
-    return cleanBullet(`The preview centers on ${formatSubjectList(ctx.subjects)}`, 140).replace(/\.$/, "");
+    return cleanBullet(`The story centers on ${formatSubjectList(ctx.subjects)}`, 140).replace(/\.$/, "");
   }
 
-  return cleanBullet("The named institutions and communities in the preview carry the most direct stake", 140).replace(
+  return cleanBullet("The named institutions and communities carry the most direct stake", 140).replace(
     /\.$/,
     ""
   );
@@ -2888,7 +3194,7 @@ function buildThirtySecondImpactBullet(
     return cleanBullet(`The story is most relevant to investors tracking ${entity}`, 140).replace(/\.$/, "");
   }
   if (facts.amounts.some((amount) => /\bbillion|bn|million|m\b/i.test(amount))) {
-    return cleanBullet("The payout scale cited in the preview would be material for the institutions named", 140).replace(
+    return cleanBullet("The payout scale cited would be material for the institutions named", 140).replace(
       /\.$/,
       ""
     );
@@ -2910,10 +3216,10 @@ function uniqueThirtySecondBullets(bullets: string[], facts: PreviewFacts, headl
 
   const fallbacks = [
     facts.amounts.length > 0
-      ? `The preview anchors the story to ${facts.amounts[0]}`
+      ? `Reporting anchors the story to ${facts.amounts[0]}`
       : "",
     facts.organizations.length > 0
-      ? `${facts.organizations[0]} remain central to how the excerpt frames the story`
+      ? `${facts.organizations[0]} remain central to how the story is framed`
       : "",
     facts.headlineTopic ? `The headline centers on ${facts.headlineTopic}` : "",
   ].filter(Boolean);
@@ -2921,18 +3227,29 @@ function uniqueThirtySecondBullets(bullets: string[], facts: PreviewFacts, headl
   for (const fallback of fallbacks) {
     if (unique.length >= 3) break;
     const cleaned = cleanBullet(String(fallback));
-    if (!cleaned || isNearDuplicate(cleaned, unique) || overlapsHeadline(cleaned, headline)) continue;
+    if (
+      !cleaned ||
+      isNearDuplicate(cleaned, unique) ||
+      overlapsHeadline(cleaned, headline) ||
+      isSummaryMetaCommentary(cleaned)
+    ) {
+      continue;
+    }
     unique.push(cleaned);
   }
 
   while (unique.length < 3) {
     const amount = facts.amounts[unique.length % Math.max(facts.amounts.length, 1)];
     const fallback = amount
-      ? cleanBullet(`The preview cites ${amount} as a key figure`)
+      ? cleanBullet(`Reporting cites ${amount} as a key figure`)
       : facts.headlineTopic
         ? cleanBullet(`The headline centers on ${facts.headlineTopic}`)
-        : cleanBullet("Open the source article for the next confirmed update on this story");
-    if (!isNearDuplicate(fallback, unique) && !overlapsHeadline(fallback, headline)) {
+        : cleanBullet("Watch for the next confirmed update on this story");
+    if (
+      !isNearDuplicate(fallback, unique) &&
+      !overlapsHeadline(fallback, headline) &&
+      !isSummaryMetaCommentary(fallback)
+    ) {
       unique.push(fallback);
       continue;
     }
@@ -2940,7 +3257,7 @@ function uniqueThirtySecondBullets(bullets: string[], facts: PreviewFacts, headl
   }
 
   while (unique.length < 3) {
-    unique.push(cleanBullet("See the linked source for fuller reporting beyond this preview"));
+    unique.push(cleanBullet("Follow-up reporting will clarify timing, scope, and official response"));
   }
 
   return unique.slice(0, 3);
