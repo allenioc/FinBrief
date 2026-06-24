@@ -28,7 +28,6 @@ export function DashboardFeed({
     fetchedAt,
     hasMore,
     page,
-    debug,
     hydrateFromServer,
     appendPage,
   } = useDailyEdition();
@@ -67,16 +66,13 @@ export function DashboardFeed({
     [editionBriefs, followedTopic, isTopicView, topicQuery]
   );
 
-  const { sections: groupedSections, layoutDebug } = buildDashboardSections(editionBriefs);
+  const { sections: groupedSections } = buildDashboardSections(editionBriefs);
   const hasEditionStories = editionBriefs.length > 0;
   const hasVisibleStories = isTopicView
     ? topicStories.length > 0
     : groupedSections.some((section) => section.stories.length > 0);
   const showStories = hasEditionStories && (ready || hasVisibleStories);
   const showLoading = !showStories && !ready && syncing;
-  const dataSource = isTopicView ? "topic_filter" : debug.source;
-  const savedArticleCount = debug.savedArticleCount || editionBriefs.length;
-  const renderedTopStoryCount = isTopicView ? topicStories.length : layoutDebug.topStoriesCount;
 
   const handleLoadMore = useCallback(async () => {
     if (isTopicView) return;
@@ -120,15 +116,6 @@ export function DashboardFeed({
               ? `${topicStories.length} topic ${topicStories.length === 1 ? "story" : "stories"}`
               : `${editionBriefs.length} stories`}
           </span>
-          <span
-            className="text-[11px] text-fin-subtle"
-            data-layout-debug
-            title="Dashboard layout debug"
-          >
-            source {dataSource} · saved {savedArticleCount} · top {renderedTopStoryCount}
-            {!isTopicView &&
-              ` · dedup ${layoutDebug.rawArticleCount}→${layoutDebug.dedupedArticleCount} (−${layoutDebug.duplicatesRemoved}) · imageUrl ${debug.articlesWithImageUrl}`}
-          </span>
         </div>
         <p className="text-xs text-fin-subtle">
           Daily edition updates once per day.
@@ -144,7 +131,7 @@ export function DashboardFeed({
 
       <div className="flex flex-wrap gap-2">
         <span className="rounded-full bg-fin-brand px-3 py-1.5 text-xs font-semibold text-white">
-          {isTopicView ? `${topicQuery} · today's edition` : "This week's edition"}
+          {isTopicView ? `${topicQuery} · today's edition` : "Today's edition"}
         </span>
         {isTopicView && (
           <span className="rounded-full bg-fin-muted px-3 py-1.5 text-xs font-medium text-fin-subtle">
