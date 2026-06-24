@@ -129,16 +129,16 @@ export function DashboardFeed({
         </p>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        <span className="rounded-full bg-fin-brand px-3 py-1.5 text-xs font-semibold text-white">
-          {isTopicView ? `${topicQuery} · today's edition` : "Today's edition"}
-        </span>
-        {isTopicView && (
+      {isTopicView && (
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-full bg-fin-brand px-3 py-1.5 text-xs font-semibold text-white">
+            {topicQuery} · today&apos;s edition
+          </span>
           <span className="rounded-full bg-fin-muted px-3 py-1.5 text-xs font-medium text-fin-subtle">
             Filtered from saved daily edition
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {showLoading ? (
         <p className="fin-panel py-12 text-center text-sm text-fin-subtle">Loading stories...</p>

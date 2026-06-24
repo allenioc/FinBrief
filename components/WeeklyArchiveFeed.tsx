@@ -62,6 +62,7 @@ export function WeeklyArchiveFeed() {
 
   const weekLabel = archive?.weekLabel ?? formatWeekLabel();
   const storyCount = archive?.storyCount ?? 0;
+  const weeklyStories = archive?.days.flatMap((day) => day.stories) ?? [];
 
   if (loading && !archive?.storyCount) {
     return (
@@ -99,26 +100,14 @@ export function WeeklyArchiveFeed() {
         <p className="text-xs text-fin-subtle">Saved daily editions only · resets each Sunday</p>
       </div>
 
-      <div className="space-y-10">
-        {archive.days.map((day) => (
-          <section key={day.editionDate} className="space-y-4">
-            <div>
-              <h3 className="fin-section-title">{day.label}</h3>
-              <p className="text-sm text-fin-subtle">
-                {day.stories.length} saved {day.stories.length === 1 ? "story" : "stories"} from this edition
-              </p>
-            </div>
-            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              {day.stories.map((brief: Brief, index) => (
-                <ArticleCard
-                  key={`${day.editionDate}-${brief.id}`}
-                  article={brief}
-                  variant={index === 0 ? "hero" : "compact"}
-                  priorityImage={index === 0}
-                />
-              ))}
-            </div>
-          </section>
+      <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+        {weeklyStories.map((brief: Brief, index) => (
+          <ArticleCard
+            key={brief.id}
+            article={brief}
+            variant={index === 0 ? "hero" : "compact"}
+            priorityImage={index === 0}
+          />
         ))}
       </div>
     </div>
