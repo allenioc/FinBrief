@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { DashboardFeed } from "@/components/DashboardFeed";
+import { DashboardTabs } from "@/components/DashboardTabs";
 import { PageHeader } from "@/components/PageHeader";
 import { RecommendedTopics } from "@/components/RecommendedTopics";
 import { NewsletterWaitlist } from "@/components/NewsletterWaitlist";
@@ -60,7 +60,9 @@ export default async function HomePage({ searchParams }: HomeProps) {
             Full market brief →
           </Link>
         </div>
-        <DashboardFeed initialBriefs={initialBriefs} query={query} />
+        <Suspense fallback={<div className="fin-panel h-48 animate-pulse rounded-panel bg-fin-muted" />}>
+          <DashboardTabs initialBriefs={initialBriefs} query={query} />
+        </Suspense>
       </section>
 
       <section className="mb-12">

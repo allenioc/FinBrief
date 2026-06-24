@@ -13,6 +13,7 @@ import { countArticlesWithImageUrl } from "@/lib/article-image";
 import { filterBriefsForTopic } from "@/lib/topic-stories";
 import { isLiveEditionPayload } from "@/lib/daily-edition";
 import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
+import { saveDailyEditionForWeek } from "@/lib/weekly-archive-store";
 import type { Brief } from "@/lib/types";
 
 type CachedPayload = {
@@ -597,6 +598,7 @@ export async function GET(request: NextRequest) {
         payload: enrichedPayload,
       } satisfies LastGoodRecord),
       ...enrichedPayload.briefs.map((brief) => cacheSet(`article::${brief.id}`, brief)),
+      saveDailyEditionForWeek(today, enrichedPayload.briefs),
     ]);
     cacheStatus = "live_fetch_saved_as_todays_edition";
     lastSuccessfulFetchedAt = enrichedPayload.fetchedAt;
