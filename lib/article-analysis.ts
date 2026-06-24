@@ -1418,7 +1418,34 @@ const SUMMARY_TARGET_MAX = 450;
 const SUMMARY_FALLBACK_MIN = 120;
 
 /** Bump when Article Brief copy rules change so client caches refresh. */
-export const SUMMARY_COPY_VERSION = 2;
+export const SUMMARY_COPY_VERSION = 3;
+
+const SUMMARY_PARAGRAPH_COUNT = 3;
+
+function mergeParagraphSentences(...parts: string[]): string {
+  const sentences: string[] = [];
+  for (const part of parts) {
+    if (!part) continue;
+    for (const sentence of splitSentences(part)) {
+      if (!sentence || isNearDuplicate(sentence, sentences)) continue;
+      sentences.push(sentence);
+    }
+  }
+  return normalizeWhitespace(sentences.join(" "));
+}
+
+function limitParagraphSentences(text: string, maxSentences: number): string {
+  if (!text) return "";
+  return normalizeWhitespace(splitSentences(text).slice(0, maxSentences).join(" "));
+}
+
+function composeThreeParagraphSummary(paragraphs: string[]): string {
+  return paragraphs
+    .map((paragraph) => normalizeWhitespace(paragraph))
+    .filter(Boolean)
+    .slice(0, SUMMARY_PARAGRAPH_COUNT)
+    .join("\n\n");
+}
 
 function resolveSummaryWordTarget(headline: string, excerpt: string): number {
   const prepared = prepareExcerptForSummary(excerpt);
@@ -2630,7 +2657,7 @@ function trimSummaryParagraphs(paragraphs: string[], minWords: number, maxWords:
   return body;
 }
 
-/** FinBrief summary: source-grounded prose overview (~350–450 words). */
+/** FinBrief summary: three source-grounded paragraphs (what happened, key details, significance). */
 export function buildFinBriefSummary(
   headline: string,
   excerpt: string,
@@ -2641,38 +2668,49 @@ export function buildFinBriefSummary(
   const ctx = buildArticlePreviewContext(headline, excerpt, source, publishedAt);
   const entity = extractPrimaryEntity(headline, excerpt);
   const facts = extractPreviewFacts(headline, excerpt);
-  const minWords = resolveSummaryWordTarget(headline, excerpt);
-  const sections: string[] = [];
+  const maxSentences = ctx.limited ? 2 : 3;
 
-  const whatHappened = buildWhatHappenedParagraph(ctx, facts, entity, headline);
-  if (whatHappened) sections.push(whatHappened);
-
-  const involved = buildInvolvedPartiesParagraph(ctx, facts, entity);
-  if (involved && !isSubstantiveDuplicate(involved, sections)) sections.push(involved);
-
-  const details = buildKeyDetailsParagraph(headline, excerpt, ctx, facts, entity);
-  if (details && !isSubstantiveDuplicate(details, sections)) sections.push(details);
-
-  const context = buildBriefContextParagraph(ctx, facts, entity, financeRelated);
-  if (context && !isSubstantiveDuplicate(context, sections)) sections.push(context);
-
-  const watchNext = buildWatchNextParagraph(ctx, facts, entity, financeRelated);
-  if (watchNext && !isSubstantiveDuplicate(watchNext, sections)) sections.push(watchNext);
-
-  const composed = composeBriefParagraphs(sections);
-  const expanded = expandBriefToWordTarget(
-    composed,
-    minWords,
-    SUMMARY_TARGET_MAX,
-    ctx,
-    facts,
-    entity,
-    headline,
-    excerpt,
-    financeRelated
+  const whatHappened = limitParagraphSentences(
+    buildWhatHappenedParagraph(ctx, facts, entity, headline) || ensurePeriod(describeStoryFocus(ctx)),
+    maxSentences
   );
 
-  return trimSummaryParagraphs(expanded, minWords, SUMMARY_TARGET_MAX);
+  const keyDetails = limitParagraphSentences(
+    mergeParagraphSentences(
+      buildKeyDetailsParagraph(headline, excerpt, ctx, facts, entity),
+      buildInvolvedPartiesParagraph(ctx, facts, entity)
+    ) || buildInvolvedPartiesParagraph(ctx, facts, entity),
+    maxSentences
+  );
+
+  const significance = limitParagraphSentences(
+    mergeParagraphSentences(
+      buildBriefContextParagraph(ctx, facts, entity, financeRelated),
+      buildWatchNextParagraph(ctx, facts, entity, financeRelated)
+    ) || buildWatchNextParagraph(ctx, facts, entity, financeRelated),
+    maxSentences
+  );
+
+  const filled = [whatHappened, keyDetails, significance].map((paragraph, index) => {
+    if (paragraph) return paragraph;
+    if (index === 0) return ensurePeriod(describeStoryFocus(ctx));
+    if (index === 1) {
+      return ensurePeriod(
+        entity
+          ? `${entity} and the institutions named in the preview are the main actors described in the available reporting.`
+          : "The preview highlights the people, institutions, or figures most directly tied to the reported development."
+      );
+    }
+    return ensurePeriod(
+      ctx.limited
+        ? "The linked source article should add timeline and procedural detail missing from this preview."
+        : financeRelated
+          ? "Finance readers should treat this preview as an early read and watch for the next official update or filing."
+          : "Readers should watch for the next published update that confirms timing, scope, or official response."
+    );
+  });
+
+  return composeThreeParagraphSummary(filled);
 }
 
 function buildThirtySecondEventBullet(
@@ -2887,10 +2925,22 @@ function uniqueThirtySecondBullets(bullets: string[], facts: PreviewFacts, headl
     unique.push(cleaned);
   }
 
-  while (unique.length < 3 && facts.amounts.length > 0) {
-    const cleaned = cleanBullet(`The preview cites ${facts.amounts[unique.length % facts.amounts.length]} as a key figure`);
-    if (!isNearDuplicate(cleaned, unique)) unique.push(cleaned);
-    else break;
+  while (unique.length < 3) {
+    const amount = facts.amounts[unique.length % Math.max(facts.amounts.length, 1)];
+    const fallback = amount
+      ? cleanBullet(`The preview cites ${amount} as a key figure`)
+      : facts.headlineTopic
+        ? cleanBullet(`The headline centers on ${facts.headlineTopic}`)
+        : cleanBullet("Open the source article for the next confirmed update on this story");
+    if (!isNearDuplicate(fallback, unique) && !overlapsHeadline(fallback, headline)) {
+      unique.push(fallback);
+      continue;
+    }
+    break;
+  }
+
+  while (unique.length < 3) {
+    unique.push(cleanBullet("See the linked source for fuller reporting beyond this preview"));
   }
 
   return unique.slice(0, 3);
@@ -3150,27 +3200,39 @@ function buildSecuritiesLegalSummary(
   const tickerNote =
     details.tickers.length > 0 ? ` (${details.tickers.join(", ")})` : "";
   const entity = details.company;
-  const paragraphs = [
-    `${details.lawFirm} issued a ${details.actionLabel} involving ${entity}${tickerNote}.`,
-    paraphraseHeadlineLead(headline, entity),
-  ];
 
-  const detailsParagraph = buildSummaryDetailsParagraph(headline, excerpt, entity);
-  if (detailsParagraph) paragraphs.push(detailsParagraph);
+  const opening = normalizeWhitespace(
+    `${details.lawFirm} issued a ${details.actionLabel} involving ${entity}${tickerNote}. ${paraphraseHeadlineLead(
+      headline,
+      entity
+    )}`
+  );
+
+  const detailsParagraph =
+    buildSummaryDetailsParagraph(headline, excerpt, entity) ||
+    `${source || "The publisher"} posted a legal notice about ${entity}${tickerNote}; the preview does not include the full filing text.`;
 
   const lower = prepareExcerptForSummary(excerpt).toLowerCase();
+  let investorImpact =
+    "These notices often follow stock price drops; they do not mean a lawsuit has already succeeded.";
   if (/\blead plaintiff|deadline|shareholders|purchasers|class period|investors who purchased\b/i.test(lower)) {
-    const investorImpact = summarySentences(excerpt)
+    const matched = summarySentences(excerpt)
       .map((sentence) => paraphraseExcerptSentence(sentence, entity, headline))
       .find((sentence) =>
         /\blead plaintiff|deadline|shareholders|purchasers|class period|investors who purchased\b/i.test(sentence)
       );
-    if (investorImpact && !isNearDuplicate(investorImpact, paragraphs)) {
-      paragraphs.push(investorImpact);
-    }
+    if (matched) investorImpact = matched;
   }
 
-  return trimSummaryParagraphs(paragraphs, SUMMARY_TARGET_MIN, SUMMARY_TARGET_MAX);
+  const closing = normalizeWhitespace(
+    `${investorImpact} Treat this as legal marketing content until confirmed by court filings or independent reporting.`
+  );
+
+  return composeThreeParagraphSummary([
+    limitParagraphSentences(opening, 3),
+    limitParagraphSentences(detailsParagraph, 3),
+    limitParagraphSentences(closing, 2),
+  ]);
 }
 
 function buildSecuritiesLegalThirtySecond(details: SecuritiesNoticeDetails): string {
