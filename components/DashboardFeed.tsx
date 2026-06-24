@@ -94,7 +94,10 @@ export function DashboardFeed({ query }: { query: string }) {
     ? topicStories.length > 0
     : groupedSections.some((section) => section.stories.length > 0);
   const hasWeeklyStories = (weeklyArchive?.storyCount ?? 0) > 0;
-  const showLoading = isTopicView ? weeklyLoading : !ready;
+  const showLoading = isTopicView
+    ? weeklyLoading
+    : !ready || (syncing && !hasEditionStories);
+  const showEmptyEdition = ready && !syncing && !hasEditionStories && !isTopicView;
 
   const handleLoadMore = useCallback(async () => {
     if (isTopicView) return;
@@ -206,7 +209,7 @@ export function DashboardFeed({ query }: { query: string }) {
             back as more editions are saved.
           </p>
         </div>
-      ) : !hasVisibleStories && !hasEditionStories ? (
+      ) : showEmptyEdition && !hasVisibleStories ? (
         <div className="fin-panel py-12 text-center">
           <p className="text-sm font-medium text-fin-navy">No stories in this edition yet</p>
           <p className="mt-2 text-sm text-fin-subtle">
