@@ -7,8 +7,7 @@ import {
   buildWhyItMatters,
   buildWhoIsAffected,
   enrichBrief,
-  estimateMarketImpact,
-  estimateSentiment,
+  deriveArticleMetadata,
   extractKeyTerms,
   inferArticleType,
   inferDisplayTopic,
@@ -110,11 +109,19 @@ export function normalizeProviderArticles(input: {
     const analysisText = `${article.headline} ${article.excerpt} ${article.content ?? ""}`;
     const type = inferArticleType(analysisText);
     const topic = inferTopic(input.query, article.headline, type);
-    const { sentiment, confidence } = estimateSentiment(analysisText);
-    const marketImpact = estimateMarketImpact(analysisText);
     const keyTerms = extractKeyTerms(analysisText);
     const excerpt = article.excerpt?.trim() || "No summary available from provider.";
     const mappedArticleType = mapArticleType(type);
+    const metadata = deriveArticleMetadata({
+      headline: article.headline,
+      excerpt,
+      summary: "",
+      whatHappened: excerpt,
+      ticker: "—",
+      topic,
+      source: article.source,
+      keyAffectedAssets: [],
+    });
 
     return {
       id: article.id,
@@ -133,9 +140,9 @@ export function normalizeProviderArticles(input: {
       excerpt,
       relatedTickerOrTopic: topic,
       articleType: type,
-      sentiment,
-      marketImpact,
-      confidence,
+      sentiment: metadata.sentiment,
+      marketImpact: metadata.marketImpact,
+      confidence: metadata.sentimentConfidence,
       thirtySecondVersion: buildThirtySecondVersion(
         article.headline,
         excerpt,
@@ -160,8 +167,8 @@ export function normalizeProviderArticles(input: {
         buildWhoIsAffected(article.headline, excerpt, type, article.source, article.publishedAt),
       ],
       keyTerms,
-      bullCase: buildBullCase(article.headline, excerpt, sentiment),
-      bearCase: buildBearCase(article.headline, excerpt, sentiment),
+      bullCase: buildBullCase(article.headline, excerpt, metadata.sentiment),
+      bearCase: buildBearCase(article.headline, excerpt, metadata.sentiment),
       neutralView: buildNeutralView(),
       risks: [
         "Headline-driven moves can reverse quickly",
@@ -173,7 +180,7 @@ export function normalizeProviderArticles(input: {
         "Revisions from major sources",
         "Price reaction in related assets",
       ],
-      relatedAssets: [topic, "SPY", "QQQ"].filter(Boolean),
+      relatedAssets: metadata.keyAffectedAssets,
       recommendedNext: recommendedFor(topic),
     };
   });

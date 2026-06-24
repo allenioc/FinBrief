@@ -1,4 +1,4 @@
-import type { Brief, DataSnapshot, MarketImpact, Sentiment } from "./types";
+import type { Brief, DataSnapshot, MarketImpact, RelatedAsset, Sentiment } from "./types";
 import { isSecuritiesLegalNotice } from "./story-dedup";
 import { enrichBriefImage } from "./article-image";
 
@@ -8,12 +8,22 @@ const POSITIVE_WORDS = [
   "strong",
   "surge",
   "gain",
+  "gains",
   "upgraded",
   "improved",
   "rally",
   "outperform",
   "cooling",
   "easing",
+  "record",
+  "profit",
+  "rebound",
+  "optimistic",
+  "expansion",
+  "dividend",
+  "higher",
+  "tops",
+  "exceeds",
 ];
 
 const NEGATIVE_WORDS = [
@@ -29,6 +39,21 @@ const NEGATIVE_WORDS = [
   "downgrade",
   "pressure",
   "sticky",
+  "loss",
+  "losses",
+  "layoff",
+  "layoffs",
+  "bankruptcy",
+  "investigation",
+  "recall",
+  "default",
+  "crash",
+  "fall",
+  "falls",
+  "slump",
+  "weak",
+  "lower",
+  "cuts",
 ];
 
 const HIGH_IMPACT_TERMS = [
@@ -42,6 +67,12 @@ const HIGH_IMPACT_TERMS = [
   "nasdaq",
   "s&p 500",
   "earnings",
+  "merger",
+  "acquisition",
+  "bank failure",
+  "rate cut",
+  "rate hike",
+  "treasury",
 ];
 
 const MEDIUM_IMPACT_TERMS = [
@@ -53,6 +84,44 @@ const MEDIUM_IMPACT_TERMS = [
   "outlook",
   "policy",
   "bond yields",
+  "revenue",
+  "profit",
+  "ipo",
+  "tariff",
+  "regulation",
+];
+
+const COMPANY_TICKER_HINTS: Record<string, string> = {
+  apple: "AAPL",
+  microsoft: "MSFT",
+  nvidia: "NVDA",
+  tesla: "TSLA",
+  amazon: "AMZN",
+  alphabet: "GOOGL",
+  google: "GOOGL",
+  meta: "META",
+  netflix: "NFLX",
+  intel: "INTC",
+  amd: "AMD",
+  jpmorgan: "JPM",
+  "goldman sachs": "GS",
+  boeing: "BA",
+  ford: "F",
+  "general motors": "GM",
+};
+
+const SECTOR_KEYWORD_TAGS: [RegExp, string][] = [
+  [/\b(bank|banking|jpmorgan|wells fargo|citigroup|goldman)\b/i, "Banking"],
+  [/\b(semiconductor|chipmaker|foundry|tsmc|asml|chip stocks)\b/i, "Semiconductors"],
+  [/\b(artificial intelligence|\bai\b|machine learning|llm|copilot|openai)\b/i, "AI"],
+  [/\b(real estate|reit|housing market|mortgage|home prices)\b/i, "Real Estate"],
+  [/\b(oil|energy|crude|natural gas|opec|renewable)\b/i, "Energy"],
+  [/\b(inflation|cpi|pce|price pressure|cost of living)\b/i, "Inflation"],
+  [/\b(fed|federal reserve|interest rate|treasury yield|monetary policy|powell)\b/i, "Interest Rates"],
+  [/\b(health care|biotech|pharma|drug approval)\b/i, "Health Care"],
+  [/\b(retail|consumer spending|e-commerce|same-store sales)\b/i, "Retail"],
+  [/\b(auto|automotive|ev\b|electric vehicle|car sales)\b/i, "Auto"],
+  [/\b(cybersecurity|cloud computing|software stocks)\b/i, "Technology"],
 ];
 
 const KEY_TERM_DEFINITIONS: Record<string, string> = {
@@ -74,6 +143,174 @@ const DEFAULT_KEY_TERMS = ["earnings", "guidance", "valuation", "inflation", "in
 function scoreText(text: string, words: string[]): number {
   const lower = text.toLowerCase();
   return words.reduce((sum, word) => sum + (lower.includes(word) ? 1 : 0), 0);
+}
+
+function textSignalHash(text: string): number {
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+function buildAnalysisText(
+  brief: Pick<Brief, "headline" | "excerpt" | "summary" | "whatHappened" | "ticker" | "topic" | "source">
+): string {
+  return normalizeWhitespace(
+    [
+      brief.headline,
+      brief.headline,
+      brief.excerpt,
+      brief.summary,
+      brief.whatHappened,
+      brief.topic,
+      brief.ticker !== "—" ? brief.ticker : "",
+      brief.source,
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+}
+
+function extractMentionedTickers(text: string): string[] {
+  const tickers = new Set<string>();
+  for (const match of text.matchAll(/\((?:NASDAQ|NYSE|AMEX):\s*([A-Z]{1,5})\)/gi)) {
+    tickers.add(match[1].toUpperCase());
+  }
+  for (const match of text.matchAll(/\b\$([A-Z]{1,5})\b/g)) {
+    tickers.add(match[1].toUpperCase());
+  }
+  for (const [name, symbol] of Object.entries(COMPANY_TICKER_HINTS)) {
+    if (new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text)) {
+      tickers.add(symbol);
+    }
+  }
+  return [...tickers];
+}
+
+function isBroadMarketStory(lower: string, articleType: ReturnType<typeof inferArticleType>): boolean {
+  return (
+    articleType === "market" ||
+    articleType === "etf" ||
+    articleType === "macro" ||
+    /\b(s&p 500|nasdaq|dow jones|stock market|wall street|broad market|equity market|index fund|futures|market rally|market selloff)\b/.test(
+      lower
+    )
+  );
+}
+
+function inferRelatedAssetType(label: string): RelatedAsset["type"] {
+  const upper = label.toUpperCase();
+  if (/^(SPY|QQQ|DIA|VTI|IWM|SMH|IGV|XL[A-Z]{1}|TLT)$/.test(upper)) return "etf";
+  if (/^[A-Z]{1,5}$/.test(label)) return "stock";
+  if (["Inflation", "Interest Rates"].includes(label)) return "macro";
+  if (
+    ["Banking", "Semiconductors", "AI", "Real Estate", "Energy", "Health Care", "Retail", "Auto", "Technology"].includes(
+      label
+    )
+  ) {
+    return "sector";
+  }
+  return "index";
+}
+
+export function inferKeyAffectedAssets(
+  brief: Pick<Brief, "headline" | "excerpt" | "summary" | "whatHappened" | "ticker" | "topic" | "source">,
+  articleType: ReturnType<typeof inferArticleType>,
+  financeRelated: boolean
+): string[] {
+  const text = buildAnalysisText(brief);
+  const lower = text.toLowerCase();
+  const tags: string[] = [];
+  const seen = new Set<string>();
+
+  const add = (tag: string) => {
+    const trimmed = tag.trim();
+    if (!trimmed || seen.has(trimmed.toLowerCase())) return;
+    seen.add(trimmed.toLowerCase());
+    tags.push(trimmed);
+  };
+
+  if (!financeRelated) {
+    const civic = extractCivicAffectedParties(brief.headline, brief.excerpt);
+    for (const party of civic.slice(0, 3)) add(party);
+    if (tags.length === 0) add("Local");
+    return tags.slice(0, 4);
+  }
+
+  for (const ticker of extractMentionedTickers(text)) add(ticker);
+
+  if (brief.ticker && brief.ticker !== "—" && /^[A-Z]{1,5}$/.test(brief.ticker)) {
+    add(brief.ticker);
+  }
+
+  for (const [pattern, label] of SECTOR_KEYWORD_TAGS) {
+    if (pattern.test(text)) add(label);
+  }
+
+  if (isBroadMarketStory(lower, articleType)) {
+    if (/\b(spy|s&p 500)\b/i.test(text)) add("SPY");
+    if (/\b(qqq|nasdaq-?100)\b/i.test(text)) add("QQQ");
+    if (/\b(dia|dow jones)\b/i.test(text)) add("DIA");
+    if (/\b(vti|total market)\b/i.test(text)) add("VTI");
+    if (/\b(iwm|russell 2000)\b/i.test(text)) add("IWM");
+  }
+
+  const topic = brief.topic?.trim();
+  if (topic && topic !== "—" && topic !== "Markets" && !isWeakTopic(topic)) {
+    add(topic);
+  }
+
+  for (const match of text.matchAll(/\b(XL[A-Z]{1}|SMH|IGV|XLK|XLF|XLE|XLV|XLRE|TLT)\b/g)) {
+    add(match[1].toUpperCase());
+  }
+
+  if (tags.length === 0) {
+    for (const subject of extractMentionedSubjects(brief.headline, brief.excerpt).slice(0, 2)) {
+      add(subject);
+    }
+  }
+
+  if (tags.length === 0) {
+    const entity = extractPrimaryEntity(brief.headline, brief.excerpt);
+    if (entity) add(entity);
+  }
+
+  if (tags.length === 0 && articleType === "macro") add("Macro");
+  if (tags.length === 0 && articleType === "market") add("Markets");
+
+  return tags.slice(0, 6);
+}
+
+export function deriveArticleMetadata(
+  brief: Pick<
+    Brief,
+    "headline" | "excerpt" | "summary" | "whatHappened" | "ticker" | "topic" | "source" | "keyAffectedAssets"
+  >
+): Pick<Brief, "sentiment" | "sentimentConfidence" | "marketImpact" | "keyAffectedAssets" | "relatedAssets"> {
+  const analysisText = buildAnalysisText(brief);
+  const financeRelated = isFinanceRelatedStory(
+    brief.headline,
+    brief.excerpt,
+    brief.ticker,
+    brief.keyAffectedAssets
+  );
+  const articleType = inferArticleType(analysisText);
+  const { sentiment, confidence } = estimateSentiment(analysisText);
+  const marketImpact = financeRelated ? estimateMarketImpact(analysisText) : ("low" as MarketImpact);
+  const keyAffectedAssets = inferKeyAffectedAssets(brief, articleType, financeRelated);
+
+  return {
+    sentiment: financeRelated ? sentiment : sentiment === "mixed" ? "mixed" : "neutral",
+    sentimentConfidence: confidence,
+    marketImpact,
+    keyAffectedAssets,
+    relatedAssets: keyAffectedAssets.map((symbol) => ({
+      symbol,
+      name: symbol,
+      type: inferRelatedAssetType(symbol),
+    })),
+  };
 }
 
 function normalizeWhitespace(text: string): string {
@@ -578,15 +815,32 @@ export function estimateSentiment(text: string): {
   sentiment: Sentiment;
   confidence: number;
 } {
-  const positive = scoreText(text, POSITIVE_WORDS);
-  const negative = scoreText(text, NEGATIVE_WORDS);
+  const lower = text.toLowerCase();
+  const positive = scoreText(lower, POSITIVE_WORDS);
+  const negative = scoreText(lower, NEGATIVE_WORDS);
   const delta = positive - negative;
+  const richness = Math.min(1, countWords(text) / 100);
+  const hashMod = textSignalHash(text) % 17;
+
   if (positive > 0 && negative > 0 && Math.abs(delta) <= 1) {
-    return { sentiment: "mixed", confidence: 68 };
+    return { sentiment: "mixed", confidence: Math.round(58 + richness * 14 + hashMod * 0.8) };
   }
-  if (delta >= 2) return { sentiment: "positive", confidence: Math.min(90, 70 + delta * 4) };
-  if (delta <= -2) return { sentiment: "negative", confidence: Math.min(90, 70 + Math.abs(delta) * 4) };
-  return { sentiment: "neutral", confidence: 64 };
+  if (delta >= 2) {
+    return { sentiment: "positive", confidence: Math.min(91, Math.round(68 + delta * 4 + richness * 10)) };
+  }
+  if (delta <= -2) {
+    return {
+      sentiment: "negative",
+      confidence: Math.min(91, Math.round(68 + Math.abs(delta) * 4 + richness * 10)),
+    };
+  }
+  if (delta === 1) {
+    return { sentiment: "positive", confidence: Math.round(55 + richness * 12 + hashMod) };
+  }
+  if (delta === -1) {
+    return { sentiment: "negative", confidence: Math.round(55 + richness * 12 + hashMod) };
+  }
+  return { sentiment: "neutral", confidence: Math.round(52 + richness * 12 + hashMod) };
 }
 
 export function estimateMarketImpact(text: string): MarketImpact {
@@ -636,7 +890,10 @@ export function inferDisplayTopic(
   if (articleType === "etf") return "Index ETFs";
   if (articleType === "sector") return "Sector news";
   if (articleType === "market") return "Markets";
-  return "Markets";
+
+  const entity = extractPrimaryEntity(headline, "");
+  if (entity) return entity;
+  return "Business";
 }
 
 export function extractKeyTerms(text: string): { term: string; definition: string }[] {
@@ -2964,10 +3221,9 @@ export function enrichArticleCopy(brief: Brief): Brief {
     brief.ticker,
     brief.keyAffectedAssets
   );
-  const analysisText = combinedText(brief.headline, brief.excerpt);
+  const analysisText = buildAnalysisText(brief);
   const articleType = inferArticleType(analysisText);
-  const { sentiment } = estimateSentiment(analysisText);
-  const marketImpact = financeRelated ? estimateMarketImpact(analysisText) : ("low" as MarketImpact);
+  const metadata = deriveArticleMetadata(brief);
 
   return {
     ...brief,
@@ -3003,8 +3259,11 @@ export function enrichArticleCopy(brief: Brief): Brief {
       brief.ticker,
       financeRelated
     ),
-    sentiment: financeRelated ? sentiment : sentiment === "mixed" ? "mixed" : "neutral",
-    marketImpact,
+    sentiment: metadata.sentiment,
+    sentimentConfidence: metadata.sentimentConfidence,
+    marketImpact: metadata.marketImpact,
+    keyAffectedAssets: metadata.keyAffectedAssets,
+    relatedAssets: metadata.relatedAssets,
   };
 }
 

@@ -137,11 +137,11 @@ export function ArticleCard({
             <TooltipLabel label="Market impact" content={ANALYSIS_LABEL_TOOLTIPS.marketImpact} />
           </div>
           <div className="flex flex-wrap gap-2">
-            <SentimentBadge sentiment={article.sentiment} />
-            <MarketImpactBadge impact={article.marketImpact} />
+            <SentimentBadge sentiment={enriched.sentiment} />
+            <MarketImpactBadge impact={enriched.marketImpact} />
           </div>
-          <ConfidenceScore score={article.sentimentConfidence} />
-          <AssetTags assets={article.keyAffectedAssets} max={isHero ? 6 : 4} />
+          <ConfidenceScore score={enriched.sentimentConfidence} />
+          <AssetTags assets={enriched.keyAffectedAssets} max={isHero ? 6 : 4} />
         </div>
 
         <div className="flex items-center justify-between gap-3">

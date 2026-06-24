@@ -106,7 +106,7 @@ export function ArticleDetail({ article }: { article: Brief }) {
 
             <div className="mt-5">
               <p className="fin-label mb-2">Related assets</p>
-              <AssetTags assets={article.keyAffectedAssets} max={8} />
+              <AssetTags assets={enriched.keyAffectedAssets} max={8} />
             </div>
 
             <div className="mt-6 space-y-3">
@@ -117,7 +117,7 @@ export function ArticleDetail({ article }: { article: Brief }) {
               <div className="flex flex-wrap items-center gap-3">
                 <SentimentBadge sentiment={enriched.sentiment} />
                 <MarketImpactBadge impact={enriched.marketImpact} />
-                <ConfidenceScore score={article.sentimentConfidence} />
+                <ConfidenceScore score={enriched.sentimentConfidence} />
               </div>
             </div>
 
