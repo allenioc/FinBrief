@@ -125,8 +125,7 @@ export function ArticleBriefFloatingBack({ fallbackHref }: { fallbackHref: strin
       }`}
       style={{
         left: "max(1rem, env(safe-area-inset-left))",
-        // When visible, the shell nav has scrolled away; sticky TopBar/search is ~4.5rem
-        top: "calc(env(safe-area-inset-top, 0px) + 4.75rem)",
+        top: "calc(env(safe-area-inset-top, 0px) + 4.125rem)",
       }}
     >
       <ChevronLeftIcon />
