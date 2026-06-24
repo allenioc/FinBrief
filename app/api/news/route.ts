@@ -6,12 +6,19 @@ import {
   type ProviderTimeRange,
 } from "@/lib/news-providers";
 import { providerArticlesToBriefs } from "@/lib/news-normalizer";
-import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT, FAILURE_RETRY_COOLDOWN_MS, SUCCESS_FETCH_COOLDOWN_MS } from "@/lib/news-constants";
+import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT, DAILY_EDITION_REPLACEMENT_MIN, FAILURE_RETRY_COOLDOWN_MS, SUCCESS_FETCH_COOLDOWN_MS } from "@/lib/news-constants";
 import { searchBriefs } from "@/lib/briefs";
 import { enrichBrief } from "@/lib/article-analysis";
 import { countArticlesWithImageUrl } from "@/lib/article-image";
 import { filterBriefsForTopic } from "@/lib/topic-stories";
-import { dateKeyFromFetchedAt, isLiveEditionPayload, isWithinSuccessFetchCooldown, msSinceFetchedAt } from "@/lib/daily-edition";
+import {
+  dateKeyFromFetchedAt,
+  editionStoryCount,
+  isLiveEditionPayload,
+  isWithinSuccessFetchCooldown,
+  msSinceFetchedAt,
+  shouldPersistLiveEditionFetch,
+} from "@/lib/daily-edition";
 import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
 import { saveDailyEditionForWeek, syncLiveEditionToWeekArchive, resolveWeeklyEditionDate } from "@/lib/weekly-archive-store";
 import type { Brief } from "@/lib/types";
@@ -130,37 +137,60 @@ async function resolveLastSuccessfulFetchedAt(
   return lastGood?.value.fetchedAt ?? savedEdition?.value.payload.fetchedAt ?? null;
 }
 
+function resolveExistingEditionStoryCount(
+  savedEdition: { value: EditionRecord } | null | undefined,
+  lastGood: { value: LastGoodRecord } | null | undefined
+): number {
+  const counts = [
+    savedEdition?.value.payload ? editionStoryCount(savedEdition.value.payload) : 0,
+    lastGood?.value.payload ? editionStoryCount(lastGood.value.payload) : 0,
+  ];
+  return Math.max(...counts, 0);
+}
+
 function resolveBestSavedEdition(
   today: string,
   savedEdition: { tier: string; value: EditionRecord } | null | undefined,
   lastGood: { tier: string; value: LastGoodRecord } | null | undefined
 ): { payload: CachedPayload; cacheStatus: string; fetchedAt: string } | null {
+  const candidates: Array<{ payload: CachedPayload; cacheStatus: string; fetchedAt: string }> = [];
+
   if (
     savedEdition &&
     savedEdition.value.editionDate === today &&
     isLiveEditionPayload(savedEdition.value.payload)
   ) {
-    return {
+    candidates.push({
       payload: savedEdition.value.payload,
       cacheStatus: `hit:${savedEdition.tier}`,
       fetchedAt: savedEdition.value.payload.fetchedAt,
-    };
+    });
   }
   if (lastGood && isLiveEditionPayload(lastGood.value.payload)) {
-    return {
+    candidates.push({
       payload: lastGood.value.payload,
       cacheStatus: `lastgood:${lastGood.tier}`,
       fetchedAt: lastGood.value.fetchedAt,
-    };
+    });
   }
   if (savedEdition && isLiveEditionPayload(savedEdition.value.payload)) {
-    return {
+    candidates.push({
       payload: savedEdition.value.payload,
       cacheStatus: `stale_edition:${savedEdition.tier}`,
       fetchedAt: savedEdition.value.payload.fetchedAt,
-    };
+    });
   }
-  return null;
+
+  if (candidates.length === 0) return null;
+
+  return candidates.reduce((best, candidate) => {
+    const bestCount = editionStoryCount(best.payload);
+    const candidateCount = editionStoryCount(candidate.payload);
+    if (candidateCount > bestCount) return candidate;
+    if (candidateCount < bestCount) return best;
+    if (candidate.cacheStatus.startsWith("hit:")) return candidate;
+    return best;
+  });
 }
 
 async function serveSavedEditionResponse(
@@ -558,19 +588,22 @@ export async function GET(request: NextRequest) {
     );
     const bestSaved = resolveBestSavedEdition(today, savedEdition, lastGood);
 
-    // 1) Saved live edition for today: serve it, never touch providers.
+    // 1) Saved live edition for today: serve the strongest cached copy, never touch providers.
     if (
       savedEdition &&
       savedEdition.value.editionDate === today &&
-      isLiveEditionPayload(savedEdition.value.payload)
+      bestSaved &&
+      isLiveEditionPayload(bestSaved.payload)
     ) {
+      if (
+        editionStoryCount(savedEdition.value.payload) < editionStoryCount(bestSaved.payload) &&
+        editionStoryCount(bestSaved.payload) >= DAILY_EDITION_REPLACEMENT_MIN
+      ) {
+        await restoreTodaysEditionIfMissing(today, editionKey, bestSaved);
+      }
       return serveSavedEditionResponse(
         today,
-        {
-          payload: savedEdition.value.payload,
-          cacheStatus: `hit:${savedEdition.tier}`,
-          fetchedAt: savedEdition.value.payload.fetchedAt,
-        },
+        bestSaved,
         "saved_edition_for_today_exists",
         savedEdition.value.editionDate
       );
@@ -718,12 +751,17 @@ export async function GET(request: NextRequest) {
       })()
     : toMockPayload(query, page, fetchLimit);
 
+  const savedEditionForSave = await cacheGet<EditionRecord>(editionKey);
+  const lastGoodForSave = await cacheGet<LastGoodRecord>(lastGoodKey);
+  const existingStoryCount = resolveExistingEditionStoryCount(savedEditionForSave, lastGoodForSave);
   const isSuccessfulLiveFetch = isLiveEditionPayload(payload);
+  const shouldSaveLiveEdition =
+    isSuccessfulLiveFetch && shouldPersistLiveEditionFetch(payload, existingStoryCount);
 
   let cacheStatus: string;
   let lastSuccessfulFetchedAt: string | null = null;
 
-  if (isSuccessfulLiveFetch) {
+  if (shouldSaveLiveEdition) {
     const enrichedPayload = enrichPayloadBriefs(payload);
     await Promise.all([
       cacheSet(editionKey, {
@@ -746,9 +784,14 @@ export async function GET(request: NextRequest) {
     lastSuccessfulFetchedAt = enrichedPayload.fetchedAt;
     payload = enrichedPayload;
   } else {
-    // Never save 0-story or rate-limited/error responses as a successful edition.
+    // Never save weak partials, 0-story, or rate-limited/error responses as a successful edition.
     const existingCooldown = await readFetchCooldown(scopeKey);
-    const lastGood = await cacheGet<LastGoodRecord>(lastGoodKey);
+    const lastGood = lastGoodForSave;
+    const rejectedPartialLiveFetch =
+      isSuccessfulLiveFetch &&
+      !shouldPersistLiveEditionFetch(payload, existingStoryCount) &&
+      existingStoryCount >= DAILY_EDITION_REPLACEMENT_MIN;
+
     if (providerResponse) {
       await writeFetchCooldown(scopeKey, {
         retryAt: Date.now() + FAILURE_RETRY_COOLDOWN_MS,
@@ -756,14 +799,30 @@ export async function GET(request: NextRequest) {
           existingCooldown?.lastSuccessfulFetchedAt ?? lastGood?.value.fetchedAt ?? undefined,
       });
     }
+
+    if (
+      rejectedPartialLiveFetch &&
+      lastGood &&
+      isLiveEditionPayload(lastGood.value.payload) &&
+      editionStoryCount(lastGood.value.payload) >= DAILY_EDITION_REPLACEMENT_MIN
+    ) {
+      await restoreTodaysEditionIfMissing(today, editionKey, {
+        payload: lastGood.value.payload,
+        fetchedAt: lastGood.value.fetchedAt,
+      });
+    }
+
     if (lastGood && isLiveEditionPayload(lastGood.value.payload)) {
       lastSuccessfulFetchedAt = lastGood.value.fetchedAt;
       payload = {
         ...lastGood.value.payload,
-        errorMessage:
-          payload.errorMessage ?? "Live provider unavailable. Showing latest available stories.",
+        errorMessage: rejectedPartialLiveFetch
+          ? `Provider returned only ${editionStoryCount(payload)} usable ${editionStoryCount(payload) === 1 ? "story" : "stories"}. Keeping the saved daily edition.`
+          : payload.errorMessage ?? "Live provider unavailable. Showing latest available stories.",
       };
-      cacheStatus = `stale_fallback:${lastGood.tier}`;
+      cacheStatus = rejectedPartialLiveFetch
+        ? `partial_fetch_rejected:${lastGood.tier}`
+        : `stale_fallback:${lastGood.tier}`;
     } else {
       cacheStatus = payload.provider === "mock" ? "mock_fallback" : "live_fetch_failed_no_saved_edition";
     }

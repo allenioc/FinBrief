@@ -12,7 +12,7 @@ import {
 import type { Brief } from "@/lib/types";
 import { countArticlesWithImageUrl } from "@/lib/article-image";
 import { enrichBrief, SUMMARY_COPY_VERSION } from "@/lib/article-analysis";
-import { DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
+import { DAILY_EDITION_ARTICLE_LIMIT, DAILY_EDITION_REPLACEMENT_MIN } from "@/lib/news-constants";
 import {
   dailyEditionDateKey,
   dailyEditionRequestKey,
@@ -184,7 +184,9 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
         cachedSnapshot &&
         cachedSnapshot.briefs.length > 0 &&
         isLiveEditionProvider(cachedSnapshot.provider) &&
-        isWithinSuccessFetchCooldown(cachedSnapshot.fetchedAt, todayKey)
+        isWithinSuccessFetchCooldown(cachedSnapshot.fetchedAt, todayKey) &&
+        (cachedSnapshot.briefs.length >= DAILY_EDITION_REPLACEMENT_MIN ||
+          briefsRef.current.length === 0)
       ) {
         if (!bootstrappedRef.current || briefsRef.current.length === 0) {
           bootstrappedRef.current = true;
@@ -246,10 +248,23 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
           return;
         }
 
-        const currentSnapshot = memorySnapshot ?? readEditionSnapshot();
-        const currentBriefIds = (currentSnapshot?.briefs ?? briefsRef.current)
-          .map((item) => item.id)
-          .join(",");
+        const currentSnapshot = memorySnapshot ?? readEditionSnapshot() ?? readBootstrapSnapshot();
+        const currentBriefs = currentSnapshot?.briefs ?? briefsRef.current;
+        const currentBriefCount = currentBriefs.length;
+        if (
+          currentBriefCount >= DAILY_EDITION_REPLACEMENT_MIN &&
+          apiBriefs.length < DAILY_EDITION_REPLACEMENT_MIN
+        ) {
+          return;
+        }
+        if (
+          currentBriefCount >= DAILY_EDITION_REPLACEMENT_MIN &&
+          apiBriefs.length < currentBriefCount
+        ) {
+          return;
+        }
+
+        const currentBriefIds = currentBriefs.map((item) => item.id).join(",");
         const nextBriefIds = apiBriefs.map((item) => item.id).join(",");
         if (
           briefsRef.current.length > 0 &&
@@ -257,6 +272,8 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
           !shouldUpgradeEdition({
             currentBriefIds,
             nextBriefIds,
+            currentBriefCount,
+            nextBriefCount: apiBriefs.length,
             currentCacheStatus: currentSnapshot.cacheStatus,
             currentProvider: currentSnapshot.provider,
             nextCacheStatus: payload.cacheStatus,
@@ -323,10 +340,10 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
   }, []);
 
   useEffect(() => {
-    const stored = readEditionSnapshot();
+    const stored = readBootstrapSnapshot();
     if (
       stored &&
-      isTrustedEditionSnapshot(stored) &&
+      stored.briefs.length >= DAILY_EDITION_REPLACEMENT_MIN &&
       isWithinSuccessFetchCooldown(stored.fetchedAt, todayKey)
     ) {
       return;

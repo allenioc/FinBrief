@@ -1,8 +1,8 @@
 /** Shared daily-edition helpers for server routes and client cache upgrades. */
 
-import { SUCCESS_FETCH_COOLDOWN_MS } from "./news-constants";
+import { DAILY_EDITION_REPLACEMENT_MIN, SUCCESS_FETCH_COOLDOWN_MS } from "./news-constants";
 
-export { SUCCESS_FETCH_COOLDOWN_MS };
+export { SUCCESS_FETCH_COOLDOWN_MS, DAILY_EDITION_REPLACEMENT_MIN };
 
 export function dateKeyFromFetchedAt(iso: string | null | undefined): string | null {
   if (!iso) return null;
@@ -34,11 +34,56 @@ export function isLiveEditionProvider(provider?: string | null): boolean {
   return Boolean(provider && provider !== "mock" && provider !== "error");
 }
 
+export function editionStoryCount(payload: {
+  briefs?: { length: number };
+  articleCount?: number;
+}): number {
+  if (Array.isArray(payload.briefs)) return payload.briefs.length;
+  return payload.articleCount ?? 0;
+}
+
 export function isLiveEditionPayload(payload: {
   provider?: string;
   articleCount?: number;
+  briefs?: { length: number };
 }): boolean {
-  return isLiveEditionProvider(payload.provider) && (payload.articleCount ?? 0) > 0;
+  return isLiveEditionProvider(payload.provider) && editionStoryCount(payload) > 0;
+}
+
+/** Strong enough to replace or establish today's saved daily edition. */
+export function isStrongEditionPayload(
+  payload: {
+    provider?: string;
+    articleCount?: number;
+    briefs?: { length: number };
+  },
+  minimum = DAILY_EDITION_REPLACEMENT_MIN
+): boolean {
+  return isLiveEditionProvider(payload.provider) && editionStoryCount(payload) >= minimum;
+}
+
+/** Decide whether a live provider response may overwrite cached daily editions. */
+export function shouldPersistLiveEditionFetch(
+  incoming: {
+    provider?: string;
+    articleCount?: number;
+    briefs?: { length: number };
+  },
+  existingStoryCount: number,
+  minimum = DAILY_EDITION_REPLACEMENT_MIN
+): boolean {
+  const incomingCount = editionStoryCount(incoming);
+  if (!isLiveEditionProvider(incoming.provider) || incomingCount === 0) return false;
+
+  if (incomingCount < minimum) {
+    return existingStoryCount < minimum;
+  }
+
+  if (existingStoryCount >= minimum) {
+    return incomingCount >= existingStoryCount;
+  }
+
+  return true;
 }
 
 export function isFallbackCacheStatus(cacheStatus?: string, provider?: string): boolean {
@@ -66,6 +111,8 @@ export function isLiveCacheStatus(cacheStatus?: string, provider?: string): bool
 export function shouldUpgradeEdition(input: {
   currentBriefIds: string;
   nextBriefIds: string;
+  currentBriefCount?: number;
+  nextBriefCount?: number;
   currentCacheStatus?: string;
   currentProvider?: string;
   nextCacheStatus?: string;
@@ -74,18 +121,36 @@ export function shouldUpgradeEdition(input: {
   const {
     currentBriefIds,
     nextBriefIds,
+    currentBriefCount = 0,
+    nextBriefCount = 0,
     currentCacheStatus,
     currentProvider,
     nextCacheStatus,
     nextProvider,
   } = input;
 
-  if (!currentBriefIds) return true;
+  if (!currentBriefIds) return nextBriefCount >= DAILY_EDITION_REPLACEMENT_MIN || nextBriefCount > 0;
+
+  if (
+    currentBriefCount >= DAILY_EDITION_REPLACEMENT_MIN &&
+    nextBriefCount < DAILY_EDITION_REPLACEMENT_MIN
+  ) {
+    return false;
+  }
+
+  if (
+    currentBriefCount >= DAILY_EDITION_REPLACEMENT_MIN &&
+    nextBriefCount >= DAILY_EDITION_REPLACEMENT_MIN &&
+    nextBriefCount < currentBriefCount
+  ) {
+    return false;
+  }
+
   if (
     isFallbackCacheStatus(currentCacheStatus, currentProvider) &&
     isLiveCacheStatus(nextCacheStatus, nextProvider)
   ) {
-    return true;
+    return nextBriefCount >= DAILY_EDITION_REPLACEMENT_MIN || currentBriefCount < DAILY_EDITION_REPLACEMENT_MIN;
   }
   if (
     isLiveCacheStatus(currentCacheStatus, currentProvider) &&

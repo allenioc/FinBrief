@@ -6,6 +6,9 @@ export const DAILY_EDITION_ARTICLE_LIMIT = 20;
 /** Minimum articles to persist when the daily fetch returns enough unique stories. */
 export const DAILY_EDITION_ARTICLE_MIN = 15;
 
+/** Minimum usable stories before a live fetch may replace an existing daily edition. */
+export const DAILY_EDITION_REPLACEMENT_MIN = 12;
+
 /** Dashboard Top Stories targets (client-side layout only). */
 export const DASHBOARD_TOP_STORIES_MIN = 11;
 export const DASHBOARD_TOP_STORIES_MAX = 15;
