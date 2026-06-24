@@ -6,12 +6,12 @@ import {
   type ProviderTimeRange,
 } from "@/lib/news-providers";
 import { providerArticlesToBriefs } from "@/lib/news-normalizer";
-import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
+import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT, FAILURE_RETRY_COOLDOWN_MS, SUCCESS_FETCH_COOLDOWN_MS } from "@/lib/news-constants";
 import { searchBriefs } from "@/lib/briefs";
 import { enrichBrief } from "@/lib/article-analysis";
 import { countArticlesWithImageUrl } from "@/lib/article-image";
 import { filterBriefsForTopic } from "@/lib/topic-stories";
-import { isLiveEditionPayload } from "@/lib/daily-edition";
+import { dateKeyFromFetchedAt, isLiveEditionPayload, isWithinSuccessFetchCooldown, msSinceFetchedAt } from "@/lib/daily-edition";
 import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
 import { saveDailyEditionForWeek, appendDailyEditionToWeek } from "@/lib/weekly-archive-store";
 import type { Brief } from "@/lib/types";
@@ -72,6 +72,11 @@ type LastGoodRecord = {
   payload: CachedPayload;
 };
 
+type FetchCooldownRecord = {
+  retryAt: number;
+  lastSuccessfulFetchedAt?: string;
+};
+
 type CacheDebugFields = {
   cacheStatus: string;
   cacheBackend: string;
@@ -87,8 +92,105 @@ type CacheDebugFields = {
  * After a failed live fetch, wait before retrying so repeated page loads
  * (or redeploys) cannot hammer rate-limited providers.
  */
-const FAILURE_RETRY_COOLDOWN_MS = 10 * 60 * 1000;
 const failureCooldownByScope = new Map<string, number>();
+
+function fetchCooldownCacheKey(scopeKey: string): string {
+  return `fetch-cooldown::${scopeKey}`;
+}
+
+async function readFetchCooldown(scopeKey: string): Promise<FetchCooldownRecord | null> {
+  const cached = await cacheGet<FetchCooldownRecord>(fetchCooldownCacheKey(scopeKey));
+  return cached?.value ?? null;
+}
+
+async function writeFetchCooldown(scopeKey: string, record: FetchCooldownRecord): Promise<void> {
+  if (record.retryAt > Date.now()) {
+    failureCooldownByScope.set(scopeKey, record.retryAt);
+  } else {
+    failureCooldownByScope.delete(scopeKey);
+  }
+  await cacheSet(fetchCooldownCacheKey(scopeKey), record);
+}
+
+async function resolveLastSuccessfulFetchedAt(
+  scopeKey: string,
+  today: string,
+  savedEdition: { value: EditionRecord } | null | undefined,
+  lastGood: { value: LastGoodRecord } | null | undefined
+): Promise<string | null> {
+  const cooldown = await readFetchCooldown(scopeKey);
+  if (cooldown?.lastSuccessfulFetchedAt) return cooldown.lastSuccessfulFetchedAt;
+  if (
+    savedEdition &&
+    savedEdition.value.editionDate === today &&
+    savedEdition.value.payload.fetchedAt
+  ) {
+    return savedEdition.value.payload.fetchedAt;
+  }
+  return lastGood?.value.fetchedAt ?? savedEdition?.value.payload.fetchedAt ?? null;
+}
+
+function resolveBestSavedEdition(
+  today: string,
+  savedEdition: { tier: string; value: EditionRecord } | null | undefined,
+  lastGood: { tier: string; value: LastGoodRecord } | null | undefined
+): { payload: CachedPayload; cacheStatus: string; fetchedAt: string } | null {
+  if (
+    savedEdition &&
+    savedEdition.value.editionDate === today &&
+    isLiveEditionPayload(savedEdition.value.payload)
+  ) {
+    return {
+      payload: savedEdition.value.payload,
+      cacheStatus: `hit:${savedEdition.tier}`,
+      fetchedAt: savedEdition.value.payload.fetchedAt,
+    };
+  }
+  if (lastGood && isLiveEditionPayload(lastGood.value.payload)) {
+    return {
+      payload: lastGood.value.payload,
+      cacheStatus: `lastgood:${lastGood.tier}`,
+      fetchedAt: lastGood.value.fetchedAt,
+    };
+  }
+  if (savedEdition && isLiveEditionPayload(savedEdition.value.payload)) {
+    return {
+      payload: savedEdition.value.payload,
+      cacheStatus: `stale_edition:${savedEdition.tier}`,
+      fetchedAt: savedEdition.value.payload.fetchedAt,
+    };
+  }
+  return null;
+}
+
+async function serveSavedEditionResponse(
+  today: string,
+  best: { payload: CachedPayload; cacheStatus: string; fetchedAt: string },
+  reasonProviderFetchWasSkipped: string
+) {
+  await appendDailyEditionToWeek(today, best.payload.briefs);
+  return NextResponse.json(
+    withDebugFields(best.payload, {
+      cacheStatus: best.cacheStatus,
+      editionDate: today,
+      lastSuccessfulFetchedAt: best.fetchedAt,
+      reasonProviderFetchWasSkipped,
+      reasonProviderFetchWasAllowed: null,
+    })
+  );
+}
+
+async function restoreTodaysEditionIfMissing(
+  today: string,
+  editionKey: string,
+  best: { payload: CachedPayload; fetchedAt: string }
+): Promise<void> {
+  await cacheSet(editionKey, {
+    editionDate: today,
+    savedAt: new Date().toISOString(),
+    payload: enrichPayloadBriefs(best.payload),
+  } satisfies EditionRecord);
+}
 
 function adminSecret(): string {
   return process.env.ADMIN_REFRESH_TOKEN ?? process.env.CRON_SECRET ?? "";
@@ -441,6 +543,16 @@ export async function GET(request: NextRequest) {
 
   if (!adminRefresh) {
     const savedEdition = await cacheGet<EditionRecord>(editionKey);
+    const lastGood = await cacheGet<LastGoodRecord>(lastGoodKey);
+    const cooldownRecord = await readFetchCooldown(scopeKey);
+    const retryAt = Math.max(failureCooldownByScope.get(scopeKey) ?? 0, cooldownRecord?.retryAt ?? 0);
+    const lastSuccessfulFetchedAt = await resolveLastSuccessfulFetchedAt(
+      scopeKey,
+      today,
+      savedEdition,
+      lastGood
+    );
+    const bestSaved = resolveBestSavedEdition(today, savedEdition, lastGood);
 
     // 1) Saved live edition for today: serve it, never touch providers.
     if (
@@ -448,15 +560,14 @@ export async function GET(request: NextRequest) {
       savedEdition.value.editionDate === today &&
       isLiveEditionPayload(savedEdition.value.payload)
     ) {
-      await appendDailyEditionToWeek(today, savedEdition.value.payload.briefs);
-      return NextResponse.json(
-        withDebugFields(savedEdition.value.payload, {
+      return serveSavedEditionResponse(
+        today,
+        {
+          payload: savedEdition.value.payload,
           cacheStatus: `hit:${savedEdition.tier}`,
-          editionDate: savedEdition.value.editionDate,
-          lastSuccessfulFetchedAt: savedEdition.value.payload.fetchedAt,
-          reasonProviderFetchWasSkipped: "saved_edition_for_today_exists",
-          reasonProviderFetchWasAllowed: null,
-        })
+          fetchedAt: savedEdition.value.payload.fetchedAt,
+        },
+        "saved_edition_for_today_exists"
       );
     }
 
@@ -469,46 +580,59 @@ export async function GET(request: NextRequest) {
           : "saved_edition_has_zero_stories";
 
     // 2) Recent provider failure: serve the newest saved data instead of retrying.
-    const retryAt = failureCooldownByScope.get(scopeKey) ?? 0;
-    if (retryAt > Date.now()) {
+    if (retryAt > Date.now() && bestSaved) {
       const reasonSkipped = `recent_provider_failure_retry_in_${Math.ceil((retryAt - Date.now()) / 1000)}s`;
-      const lastGood = await cacheGet<LastGoodRecord>(lastGoodKey);
-      const fallback =
-        lastGood && isLiveEditionPayload(lastGood.value.payload)
-          ? { payload: lastGood.value.payload, tier: lastGood.tier, fetchedAt: lastGood.value.fetchedAt }
-          : savedEdition && isLiveEditionPayload(savedEdition.value.payload)
-            ? {
-                payload: savedEdition.value.payload,
-                tier: savedEdition.tier,
-                fetchedAt: savedEdition.value.payload.fetchedAt,
-              }
-            : null;
-      if (fallback) {
-        return NextResponse.json(
-          withDebugFields(
-            {
-              ...fallback.payload,
-              errorMessage:
-                "Live providers are temporarily unavailable. Showing the most recent saved edition.",
-            },
-            {
-              cacheStatus: `stale_fallback:${fallback.tier}`,
-              editionDate: today,
-              lastSuccessfulFetchedAt: fallback.fetchedAt,
-              reasonProviderFetchWasSkipped: reasonSkipped,
-              reasonProviderFetchWasAllowed: null,
-            }
-          )
-        );
-      }
+      return NextResponse.json(
+        withDebugFields(
+          {
+            ...bestSaved.payload,
+            errorMessage:
+              "Live providers are temporarily unavailable. Showing the most recent saved edition.",
+          },
+          {
+            cacheStatus: bestSaved.cacheStatus.startsWith("hit:")
+              ? bestSaved.cacheStatus
+              : `stale_fallback:${bestSaved.cacheStatus}`,
+            editionDate: today,
+            lastSuccessfulFetchedAt: bestSaved.fetchedAt,
+            reasonProviderFetchWasSkipped: reasonSkipped,
+            reasonProviderFetchWasAllowed: null,
+          }
+        )
+      );
+    }
+
+    if (retryAt > Date.now()) {
       return NextResponse.json(
         withDebugFields(toMockPayload(query, page, limit), {
           cacheStatus: "mock_fallback",
           editionDate: today,
-          lastSuccessfulFetchedAt: null,
-          reasonProviderFetchWasSkipped: reasonSkipped,
+          lastSuccessfulFetchedAt: lastSuccessfulFetchedAt,
+          reasonProviderFetchWasSkipped: `recent_provider_failure_retry_in_${Math.ceil((retryAt - Date.now()) / 1000)}s`,
           reasonProviderFetchWasAllowed: null,
         })
+      );
+    }
+
+    // 3) Success cooldown: keep today's saved edition without calling providers again.
+    if (
+      isBroadDashboardEdition &&
+      bestSaved &&
+      isWithinSuccessFetchCooldown(lastSuccessfulFetchedAt, today)
+    ) {
+      if (
+        !savedEdition &&
+        dateKeyFromFetchedAt(bestSaved.fetchedAt) === today
+      ) {
+        await restoreTodaysEditionIfMissing(today, editionKey, bestSaved);
+      }
+      const remainingSeconds = Math.ceil(
+        (SUCCESS_FETCH_COOLDOWN_MS - msSinceFetchedAt(lastSuccessfulFetchedAt)) / 1000
+      );
+      return serveSavedEditionResponse(
+        today,
+        bestSaved,
+        `success_fetch_cooldown_${remainingSeconds}s_remaining`
       );
     }
   } else {
@@ -586,7 +710,6 @@ export async function GET(request: NextRequest) {
   let lastSuccessfulFetchedAt: string | null = null;
 
   if (isSuccessfulLiveFetch) {
-    failureCooldownByScope.delete(scopeKey);
     const enrichedPayload = enrichPayloadBriefs(payload);
     await Promise.all([
       cacheSet(editionKey, {
@@ -598,6 +721,10 @@ export async function GET(request: NextRequest) {
         fetchedAt: enrichedPayload.fetchedAt,
         payload: enrichedPayload,
       } satisfies LastGoodRecord),
+      writeFetchCooldown(scopeKey, {
+        retryAt: 0,
+        lastSuccessfulFetchedAt: enrichedPayload.fetchedAt,
+      }),
       ...enrichedPayload.briefs.map((brief) => cacheSet(`article::${brief.id}`, brief)),
       saveDailyEditionForWeek(today, enrichedPayload.briefs),
     ]);
@@ -606,10 +733,15 @@ export async function GET(request: NextRequest) {
     payload = enrichedPayload;
   } else {
     // Never save 0-story or rate-limited/error responses as a successful edition.
-    if (providerResponse) {
-      failureCooldownByScope.set(scopeKey, Date.now() + FAILURE_RETRY_COOLDOWN_MS);
-    }
+    const existingCooldown = await readFetchCooldown(scopeKey);
     const lastGood = await cacheGet<LastGoodRecord>(lastGoodKey);
+    if (providerResponse) {
+      await writeFetchCooldown(scopeKey, {
+        retryAt: Date.now() + FAILURE_RETRY_COOLDOWN_MS,
+        lastSuccessfulFetchedAt:
+          existingCooldown?.lastSuccessfulFetchedAt ?? lastGood?.value.fetchedAt ?? undefined,
+      });
+    }
     if (lastGood && isLiveEditionPayload(lastGood.value.payload)) {
       lastSuccessfulFetchedAt = lastGood.value.fetchedAt;
       payload = {

@@ -13,6 +13,12 @@ export const DASHBOARD_TOP_STORIES_MAX = 15;
 /** Stories shown per topic view from the saved daily edition. */
 export const TOPIC_STORIES_MAX = 3;
 
+/** Minimum wait between successful live provider fetches for the daily edition. */
+export const SUCCESS_FETCH_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+
+/** After a failed live fetch, wait before retrying providers. */
+export const FAILURE_RETRY_COOLDOWN_MS = 30 * 60 * 1000;
+
 export const BROAD_FINANCE_QUERIES = [
   "business",
   "finance",

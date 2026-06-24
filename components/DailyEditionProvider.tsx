@@ -22,6 +22,7 @@ import {
   type DailyEditionSnapshot,
   type EditionDataSource,
 } from "@/lib/daily-edition-client";
+import { isWithinSuccessFetchCooldown, shouldUpgradeEdition } from "@/lib/daily-edition";
 
 type DailyEditionDebug = {
   source: EditionDataSource;
@@ -165,6 +166,22 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
     async (options?: { background?: boolean }) => {
       if (syncingRef.current) return;
       const background = options?.background ?? false;
+
+      const cachedSnapshot = memorySnapshot ?? readEditionSnapshot();
+      if (
+        cachedSnapshot &&
+        isTrustedEditionSnapshot(cachedSnapshot) &&
+        isWithinSuccessFetchCooldown(cachedSnapshot.fetchedAt, todayKey)
+      ) {
+        if (!bootstrappedRef.current) {
+          bootstrappedRef.current = true;
+          commitSnapshot(cachedSnapshot);
+        }
+        setReady(true);
+        setSyncing(false);
+        return;
+      }
+
       if (!background && briefsRef.current.length > 0 && bootstrappedRef.current) {
         return;
       }
@@ -218,6 +235,25 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
           return;
         }
 
+        const currentSnapshot = memorySnapshot ?? readEditionSnapshot();
+        const currentBriefIds = (currentSnapshot?.briefs ?? briefsRef.current).map((item) => item.id).join(",");
+        const nextBriefIds = apiBriefs.map((item) => item.id).join(",");
+        if (
+          briefsRef.current.length > 0 &&
+          currentSnapshot &&
+          !shouldUpgradeEdition({
+            currentBriefIds,
+            nextBriefIds,
+            currentCacheStatus: currentSnapshot.cacheStatus,
+            currentProvider: currentSnapshot.provider,
+            nextCacheStatus: payload.cacheStatus,
+            nextProvider: payload.provider,
+          })
+        ) {
+          setReady(true);
+          return;
+        }
+
         const snapshot = snapshotFromBriefs(
           apiBriefs,
           "daily_edition",
@@ -234,7 +270,7 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
         setSyncing(false);
       }
     },
-    [commitSnapshot]
+    [commitSnapshot, todayKey]
   );
 
   const appendPage = useCallback((briefs: Brief[], nextHasMore: boolean, nextPage: number) => {
@@ -270,9 +306,17 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
   }, []);
 
   useEffect(() => {
+    const stored = readEditionSnapshot();
+    if (
+      stored &&
+      isTrustedEditionSnapshot(stored) &&
+      isWithinSuccessFetchCooldown(stored.fetchedAt, todayKey)
+    ) {
+      return;
+    }
     const hasCachedEdition = bootstrappedRef.current && briefsRef.current.length > 0;
     void syncEdition({ background: hasCachedEdition });
-  }, [syncEdition]);
+  }, [syncEdition, todayKey]);
 
   useEffect(() => {
     let midnightTimer: number | undefined;

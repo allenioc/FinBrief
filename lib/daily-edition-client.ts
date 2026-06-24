@@ -16,7 +16,7 @@ export type DailyEditionSnapshot = {
   copyVersion?: number;
 };
 
-const SESSION_PREFIX = "finbrief-daily-edition";
+const STORAGE_PREFIX = "finbrief-daily-edition";
 
 export function dailyEditionDateKey(): string {
   const now = new Date();
@@ -40,10 +40,15 @@ export function isTrustedEditionSnapshot(snapshot: DailyEditionSnapshot | null |
   return true;
 }
 
-export function readEditionSnapshot(): DailyEditionSnapshot | null {
+function storageKey(dateKey: string): string {
+  return `${STORAGE_PREFIX}::${dateKey}`;
+}
+
+function readFromStorage(): DailyEditionSnapshot | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = sessionStorage.getItem(`${SESSION_PREFIX}::${dailyEditionDateKey()}`);
+    const key = storageKey(dailyEditionDateKey());
+    const raw = window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as DailyEditionSnapshot;
     if (!isTrustedEditionSnapshot(parsed)) {
@@ -55,10 +60,17 @@ export function readEditionSnapshot(): DailyEditionSnapshot | null {
   }
 }
 
+export function readEditionSnapshot(): DailyEditionSnapshot | null {
+  return readFromStorage();
+}
+
 export function writeEditionSnapshot(snapshot: DailyEditionSnapshot): void {
   if (typeof window === "undefined") return;
   try {
-    sessionStorage.setItem(`${SESSION_PREFIX}::${snapshot.editionDateKey}`, JSON.stringify(snapshot));
+    const key = storageKey(snapshot.editionDateKey);
+    const serialized = JSON.stringify(snapshot);
+    window.localStorage.setItem(key, serialized);
+    window.sessionStorage.setItem(key, serialized);
   } catch {
     // Storage may be unavailable in private mode.
   }
