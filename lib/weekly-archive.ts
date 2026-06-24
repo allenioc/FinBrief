@@ -123,6 +123,93 @@ function publishedTime(iso: string): number {
   return Number.isFinite(value) ? value : 0;
 }
 
+export function isDateKeyInCurrentWeek(dateKey: string, reference: Date = new Date()): boolean {
+  return currentWeekDateKeys(reference).includes(dateKey);
+}
+
+export function dateKeyFromIso(iso: string): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return formatDateKey(date);
+}
+
+export function isPublishedInCurrentWeek(publishedAt: string, reference: Date = new Date()): boolean {
+  const dateKey = dateKeyFromIso(publishedAt);
+  return Boolean(dateKey && isDateKeyInCurrentWeek(dateKey, reference));
+}
+
+export function storyBelongsInCurrentWeek(
+  brief: Pick<Brief, "publishedAt">,
+  savedEditionDate: string,
+  reference: Date = new Date()
+): boolean {
+  return (
+    isDateKeyInCurrentWeek(savedEditionDate, reference) ||
+    isPublishedInCurrentWeek(brief.publishedAt, reference)
+  );
+}
+
+/** Prefer saved edition day for grouping; fall back to published day when only that is in-week. */
+export function groupDateForStory(
+  brief: Pick<Brief, "publishedAt">,
+  savedEditionDate: string,
+  reference: Date = new Date()
+): string | null {
+  const savedInWeek = isDateKeyInCurrentWeek(savedEditionDate, reference);
+  const publishedKey = dateKeyFromIso(brief.publishedAt);
+  const publishedInWeek = Boolean(publishedKey && isDateKeyInCurrentWeek(publishedKey, reference));
+
+  if (!savedInWeek && !publishedInWeek) return null;
+  if (savedInWeek) return savedEditionDate;
+  return publishedKey;
+}
+
+export function groupBriefsIntoDayRecords(
+  briefs: Brief[],
+  savedEditionDate: string,
+  savedAt: string,
+  reference: Date = new Date()
+): WeeklyDayRecord[] {
+  const weekDates = new Set(currentWeekDateKeys(reference));
+  const byDay = new Map<string, WeeklyArchiveArticle[]>();
+
+  for (const brief of briefs.map(enrichBrief)) {
+    const groupDate = groupDateForStory(brief, savedEditionDate, reference);
+    if (!groupDate || !weekDates.has(groupDate)) continue;
+    const list = byDay.get(groupDate) ?? [];
+    list.push(briefToArchiveArticle(brief));
+    byDay.set(groupDate, list);
+  }
+
+  return [...byDay.entries()].map(([editionDate, articles]) => ({
+    editionDate,
+    savedAt,
+    weekKey: weekKeyFromDateKey(editionDate),
+    articles,
+  }));
+}
+
+function mergeDayRecords(target: Map<string, WeeklyDayRecord>, incoming: WeeklyDayRecord): void {
+  const existing = target.get(incoming.editionDate);
+  if (!existing) {
+    target.set(incoming.editionDate, incoming);
+    return;
+  }
+  existing.articles = [...existing.articles, ...incoming.articles];
+  if (incoming.savedAt > existing.savedAt) {
+    existing.savedAt = incoming.savedAt;
+  }
+}
+
+export function mergeWeeklyDayRecords(records: WeeklyDayRecord[]): WeeklyDayRecord[] {
+  const merged = new Map<string, WeeklyDayRecord>();
+  for (const record of records) {
+    mergeDayRecords(merged, record);
+  }
+  return [...merged.values()];
+}
+
 export function briefToArchiveArticle(brief: Brief): WeeklyArchiveArticle {
   return {
     id: brief.id,
@@ -235,16 +322,12 @@ export function buildWeeklyArchivePayload(
 /** Client-side helper when only today's saved edition snapshot is available. */
 export function buildWeeklyArchiveFromBriefs(
   briefs: Brief[],
-  editionDate: string = localDateKey()
+  savedEditionDate: string = localDateKey(),
+  reference: Date = new Date()
 ): WeeklyArchivePayload {
-  const weekKey = weekKeyFromDateKey(editionDate);
-  const record: WeeklyDayRecord = {
-    editionDate,
-    savedAt: new Date().toISOString(),
-    weekKey,
-    articles: briefs.map((brief) => briefToArchiveArticle(enrichBrief(brief))),
-  };
-  return buildWeeklyArchivePayload([record], weekKey);
+  const weekKey = weekKeyFromDate(reference);
+  const dayRecords = groupBriefsIntoDayRecords(briefs, savedEditionDate, new Date().toISOString(), reference);
+  return buildWeeklyArchivePayload(dayRecords, weekKey, reference);
 }
 
 export function weeklyDayCacheKey(editionDate: string): string {

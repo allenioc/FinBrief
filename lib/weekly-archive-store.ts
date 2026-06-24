@@ -6,7 +6,9 @@ import {
   briefToArchiveArticle,
   buildWeeklyArchivePayload,
   currentWeekDateKeys,
-  localDateKey,
+  formatDateKey,
+  groupBriefsIntoDayRecords,
+  mergeWeeklyDayRecords,
   weekKeyFromDate,
   weekKeyFromDateKey,
   weeklyDayCacheKey,
@@ -20,30 +22,19 @@ type EditionRecord = {
   payload: { briefs: Brief[] };
 };
 
-async function loadBroadSavedEditionForToday(today: string): Promise<Brief[] | null> {
-  const editionKey = `edition::${BROAD_NEWS_QUERY}::week::${DAILY_EDITION_ARTICLE_LIMIT}::1`;
-  const saved = await cacheGet<EditionRecord>(editionKey);
-  if (
-    saved &&
-    saved.value.editionDate === today &&
-    Array.isArray(saved.value.payload.briefs) &&
-    saved.value.payload.briefs.length > 0
-  ) {
-    return saved.value.payload.briefs.map(enrichBrief);
-  }
-  return null;
-}
+type LastGoodRecord = {
+  fetchedAt: string;
+  payload: { briefs: Brief[] };
+};
 
-export async function saveDailyEditionForWeek(editionDate: string, briefs: Brief[]): Promise<void> {
-  if (briefs.length === 0) return;
-  const weekKey = weekKeyFromDateKey(editionDate);
-  const record: WeeklyDayRecord = {
-    editionDate,
-    savedAt: new Date().toISOString(),
-    weekKey,
-    articles: briefs.map((brief) => briefToArchiveArticle(enrichBrief(brief))),
-  };
-  await cacheSet(weeklyDayCacheKey(editionDate), record);
+type SavedBroadSource = {
+  editionDate: string;
+  savedAt: string;
+  briefs: Brief[];
+};
+
+function enrichBriefs(briefs: Brief[]): Brief[] {
+  return briefs.map(enrichBrief);
 }
 
 async function loadWeeklyDayRecord(editionDate: string): Promise<WeeklyDayRecord | null> {
@@ -54,37 +45,104 @@ async function loadWeeklyDayRecord(editionDate: string): Promise<WeeklyDayRecord
   return null;
 }
 
-async function ensureWeeklyDayFromSavedEdition(
-  editionDate: string,
-  today: string
-): Promise<WeeklyDayRecord | null> {
-  const existing = await loadWeeklyDayRecord(editionDate);
-  if (existing) return existing;
-  if (editionDate !== today) return null;
+async function loadSavedBroadSourceFromEdition(page: number): Promise<SavedBroadSource | null> {
+  const editionKey = `edition::${BROAD_NEWS_QUERY}::week::${DAILY_EDITION_ARTICLE_LIMIT}::${page}`;
+  const saved = await cacheGet<EditionRecord>(editionKey);
+  if (
+    !saved ||
+    !Array.isArray(saved.value.payload.briefs) ||
+    saved.value.payload.briefs.length === 0
+  ) {
+    return null;
+  }
+  return {
+    editionDate: saved.value.editionDate,
+    savedAt: saved.value.savedAt,
+    briefs: enrichBriefs(saved.value.payload.briefs),
+  };
+}
 
-  const briefs = await loadBroadSavedEditionForToday(today);
-  if (!briefs?.length) return null;
+async function loadSavedBroadSources(): Promise<SavedBroadSource[]> {
+  const sources: SavedBroadSource[] = [];
+  for (const page of [1, 2, 3]) {
+    const source = await loadSavedBroadSourceFromEdition(page);
+    if (source) sources.push(source);
+  }
 
-  await saveDailyEditionForWeek(today, briefs);
-  return loadWeeklyDayRecord(today);
+  const lastGoodKey = `lastgood::${BROAD_NEWS_QUERY}::week`;
+  const lastGood = await cacheGet<LastGoodRecord>(lastGoodKey);
+  if (lastGood && Array.isArray(lastGood.value.payload.briefs) && lastGood.value.payload.briefs.length > 0) {
+    sources.push({
+      editionDate: formatDateKey(new Date(lastGood.value.fetchedAt)),
+      savedAt: lastGood.value.fetchedAt,
+      briefs: enrichBriefs(lastGood.value.payload.briefs),
+    });
+  }
+
+  return sources;
+}
+
+export async function saveDailyEditionForWeek(editionDate: string, briefs: Brief[]): Promise<void> {
+  if (briefs.length === 0) return;
+  const record: WeeklyDayRecord = {
+    editionDate,
+    savedAt: new Date().toISOString(),
+    weekKey: weekKeyFromDateKey(editionDate),
+    articles: briefs
+      .map(enrichBrief)
+      .map((brief) => briefToArchiveArticle(brief)),
+  };
+  await cacheSet(weeklyDayCacheKey(editionDate), record);
+}
+
+async function persistDerivedDayRecords(records: WeeklyDayRecord[]): Promise<void> {
+  await Promise.all(
+    records.map(async (record) => {
+      const existing = await loadWeeklyDayRecord(record.editionDate);
+      if (existing?.articles.length) return;
+      await cacheSet(weeklyDayCacheKey(record.editionDate), record);
+    })
+  );
 }
 
 /** Read-only weekly archive for the current calendar week (saved daily editions only). */
 export async function loadWeeklyArchive(reference: Date = new Date()): Promise<WeeklyArchivePayload> {
   const weekKey = weekKeyFromDate(reference);
-  const today = localDateKey(reference);
-  const dateKeys = currentWeekDateKeys(reference);
-  const dayRecords: WeeklyDayRecord[] = [];
+  const weekDates = new Set(currentWeekDateKeys(reference));
+  const dayRecords = new Map<string, WeeklyDayRecord>();
 
-  for (const editionDate of dateKeys) {
-    const record =
-      (await ensureWeeklyDayFromSavedEdition(editionDate, today)) ??
-      (await loadWeeklyDayRecord(editionDate));
-    if (record && record.weekKey === weekKey && record.articles.length > 0) {
-      dayRecords.push(record);
+  for (const editionDate of weekDates) {
+    const cached = await loadWeeklyDayRecord(editionDate);
+    if (cached?.articles.length) {
+      dayRecords.set(editionDate, cached);
     }
   }
 
-  dayRecords.sort((a, b) => b.editionDate.localeCompare(a.editionDate));
-  return buildWeeklyArchivePayload(dayRecords, weekKey, reference);
+  const savedSources = await loadSavedBroadSources();
+  for (const source of savedSources) {
+    const derived = groupBriefsIntoDayRecords(
+      source.briefs,
+      source.editionDate,
+      source.savedAt,
+      reference
+    );
+    for (const record of derived) {
+      const existing = dayRecords.get(record.editionDate);
+      if (existing) {
+        existing.articles = [...existing.articles, ...record.articles];
+        if (record.savedAt > existing.savedAt) existing.savedAt = record.savedAt;
+      } else {
+        dayRecords.set(record.editionDate, record);
+      }
+    }
+  }
+
+  const mergedRecords = mergeWeeklyDayRecords([...dayRecords.values()]).filter(
+    (record) => weekDates.has(record.editionDate) && record.articles.length > 0
+  );
+
+  await persistDerivedDayRecords(mergedRecords);
+
+  mergedRecords.sort((a, b) => b.editionDate.localeCompare(a.editionDate));
+  return buildWeeklyArchivePayload(mergedRecords, weekKey, reference);
 }
