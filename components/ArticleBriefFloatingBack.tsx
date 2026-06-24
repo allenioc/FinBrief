@@ -125,7 +125,7 @@ export function ArticleBriefFloatingBack({ fallbackHref }: { fallbackHref: strin
       }`}
       style={{
         left: "max(1rem, env(safe-area-inset-left))",
-        top: "calc(env(safe-area-inset-top, 0px) + 4.125rem)",
+        top: "calc(env(safe-area-inset-top, 0px) + 4.5rem)",
       }}
     >
       <ChevronLeftIcon />
