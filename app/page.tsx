@@ -11,13 +11,12 @@ import { TRENDING_SEARCHES } from "@/lib/mock-data";
 import { BRAND } from "@/lib/theme";
 
 interface HomeProps {
-  searchParams: Promise<{ q?: string; tab?: string }>;
+  searchParams: Promise<{ q?: string }>;
 }
 
 export default async function HomePage({ searchParams }: HomeProps) {
   const params = await searchParams;
   const query = params.q?.trim() ?? "";
-  const isWeekView = params.tab === "week" && query.length === 0;
   const initialBriefs = await getBriefs("");
   const isTopicView = query.length > 0;
   const title = isTopicView ? `${query} news feed` : "Understand markets with clarity";
@@ -56,12 +55,10 @@ export default async function HomePage({ searchParams }: HomeProps) {
 
       <section className="mb-12">
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="fin-section-title">{isWeekView ? "This Week" : "Quick Brief"}</h2>
-          {!isWeekView && (
-            <Link href="/market-brief" className="fin-link text-sm">
-              Full market brief →
-            </Link>
-          )}
+          <h2 className="fin-section-title">Quick Brief</h2>
+          <Link href="/market-brief" className="fin-link text-sm">
+            Full market brief →
+          </Link>
         </div>
         <Suspense fallback={<div className="fin-panel h-48 animate-pulse rounded-panel bg-fin-muted" />}>
           <DashboardTabs initialBriefs={initialBriefs} query={query} />

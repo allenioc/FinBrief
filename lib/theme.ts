@@ -37,7 +37,6 @@ export const SIDEBAR_NAV: NavSection[] = [
     label: "Main",
     items: [
       { label: "Dashboard", href: "/" },
-      { label: "This Week", href: "/?tab=week" },
       { label: "Market Brief", href: "/market-brief" },
       { label: "Watchlist", href: "/watchlist" },
       { label: "About", href: "/about" },

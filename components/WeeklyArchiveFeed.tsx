@@ -95,9 +95,6 @@ export function WeeklyArchiveFeed() {
           <span>
             {storyCount} {storyCount === 1 ? "story" : "stories"}
           </span>
-          {archive.duplicatesRemoved > 0 && (
-            <span>Deduplicated {archive.duplicatesRemoved} repeat stories</span>
-          )}
         </div>
         <p className="text-xs text-fin-subtle">Saved daily editions only · resets each Sunday</p>
       </div>

@@ -12,13 +12,7 @@ function isActive(pathname: string, href: string, searchParams: URLSearchParams)
     const topic = url.searchParams.get("q");
     return pathname === "/" && searchParams.get("q") === topic;
   }
-  if (href === "/") {
-    const tab = searchParams.get("tab");
-    return pathname === "/" && !searchParams.get("q") && tab !== "week";
-  }
-  if (href === "/?tab=week") {
-    return pathname === "/" && !searchParams.get("q") && searchParams.get("tab") === "week";
-  }
+  if (href === "/") return pathname === "/" && !searchParams.get("q");
   const base = href.split("?")[0];
   return pathname === base || pathname.startsWith(`${base}/`);
 }
