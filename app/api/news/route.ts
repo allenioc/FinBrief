@@ -13,7 +13,7 @@ import { countArticlesWithImageUrl } from "@/lib/article-image";
 import { filterBriefsForTopic } from "@/lib/topic-stories";
 import { isLiveEditionPayload } from "@/lib/daily-edition";
 import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
-import { saveDailyEditionForWeek } from "@/lib/weekly-archive-store";
+import { saveDailyEditionForWeek, appendDailyEditionToWeek } from "@/lib/weekly-archive-store";
 import type { Brief } from "@/lib/types";
 
 type CachedPayload = {
@@ -448,6 +448,7 @@ export async function GET(request: NextRequest) {
       savedEdition.value.editionDate === today &&
       isLiveEditionPayload(savedEdition.value.payload)
     ) {
+      await appendDailyEditionToWeek(today, savedEdition.value.payload.briefs);
       return NextResponse.json(
         withDebugFields(savedEdition.value.payload, {
           cacheStatus: `hit:${savedEdition.tier}`,

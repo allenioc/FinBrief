@@ -208,6 +208,42 @@ export function mergeWeeklyDayRecords(records: WeeklyDayRecord[]): WeeklyDayReco
   return [...merged.values()];
 }
 
+export function mergeWeeklyArticles(
+  existing: WeeklyArchiveArticle[],
+  incoming: WeeklyArchiveArticle[]
+): WeeklyArchiveArticle[] {
+  const kept = [...existing];
+  for (const article of incoming) {
+    const brief = archiveArticleToBrief(article);
+    if (kept.some((item) => isSameStory(archiveArticleToBrief(item), brief))) continue;
+    kept.push(article);
+  }
+  return kept;
+}
+
+export function mergeWeeklyDayRecord(
+  existing: WeeklyDayRecord | undefined,
+  incoming: WeeklyDayRecord
+): WeeklyDayRecord {
+  if (!existing) return incoming;
+  return {
+    editionDate: incoming.editionDate,
+    weekKey: incoming.weekKey,
+    savedAt: incoming.savedAt > existing.savedAt ? incoming.savedAt : existing.savedAt,
+    articles: mergeWeeklyArticles(existing.articles, incoming.articles),
+  };
+}
+
+export type WeeklyArchiveStore = {
+  weekKey: string;
+  updatedAt: string;
+  dayRecords: WeeklyDayRecord[];
+};
+
+export function weeklyArchiveCacheKey(weekKey: string): string {
+  return `weekly-archive::${weekKey}`;
+}
+
 export function briefToArchiveArticle(brief: Brief): WeeklyArchiveArticle {
   return {
     id: brief.id,
