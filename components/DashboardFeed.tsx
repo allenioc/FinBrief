@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatLastUpdated } from "@/lib/date-format";
 import { friendlyEditionError } from "@/lib/user-messages";
-import { DAILY_EDITION_ARTICLE_LIMIT, TOPIC_STORIES_MAX } from "@/lib/news-constants";
+import { DAILY_EDITION_ARTICLE_LIMIT } from "@/lib/news-constants";
 import { dailyEditionRequestKey } from "@/lib/daily-edition-client";
 import { restoreDashboardScroll } from "@/lib/dashboard-scroll-restore";
 import { buildDashboardSections } from "@/lib/dashboard-sections";
@@ -12,6 +12,7 @@ import { toTopicSlug } from "@/lib/slug";
 import type { Brief } from "@/lib/types";
 import { useDailyEdition } from "./DailyEditionProvider";
 import { useWatchlist } from "./WatchlistProvider";
+import { useWeeklyArchive } from "./useWeeklyArchive";
 import { ArticleCard } from "./ArticleCard";
 
 function DashboardFeedSkeleton() {
@@ -44,12 +45,19 @@ export function DashboardFeed({ query }: { query: string }) {
     appendPage,
   } = useDailyEdition();
   const { items: watchlistItems } = useWatchlist();
+  const topicQuery = query.trim();
+  const isTopicView = topicQuery.length > 0;
+  const {
+    briefs: weeklyBriefs,
+    loading: weeklyLoading,
+    error: weeklyError,
+    weekLabel,
+    archive: weeklyArchive,
+  } = useWeeklyArchive(isTopicView);
 
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [visibleCount, setVisibleCount] = useState(12);
   const [apiError, setApiError] = useState<string | null>(null);
-  const topicQuery = query.trim();
-  const isTopicView = topicQuery.length > 0;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -58,28 +66,35 @@ export function DashboardFeed({ query }: { query: string }) {
     }
   }, []);
 
-  useEffect(() => {
-    if (!ready) return;
-    restoreDashboardScroll();
-  }, [ready, editionBriefs.length, topicQuery]);
-
   const followedTopic = useMemo(
     () => (isTopicView ? findWatchlistItemForQuery(watchlistItems, topicQuery) : undefined),
     [isTopicView, topicQuery, watchlistItems]
   );
 
-  const topicStories = useMemo(
-    () =>
-      isTopicView ? filterBriefsForTopic(editionBriefs, topicQuery, TOPIC_STORIES_MAX, followedTopic) : [],
-    [editionBriefs, followedTopic, isTopicView, topicQuery]
-  );
+  const topicStories = useMemo(() => {
+    if (!isTopicView) return [];
+    const filtered = filterBriefsForTopic(weeklyBriefs, topicQuery, undefined, followedTopic);
+    return [...filtered].sort(
+      (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+    );
+  }, [followedTopic, isTopicView, topicQuery, weeklyBriefs]);
+
+  useEffect(() => {
+    if (isTopicView) {
+      if (!weeklyLoading) restoreDashboardScroll();
+      return;
+    }
+    if (!ready) return;
+    restoreDashboardScroll();
+  }, [ready, editionBriefs.length, topicQuery, isTopicView, weeklyLoading, topicStories.length]);
 
   const { sections: groupedSections } = buildDashboardSections(editionBriefs);
   const hasEditionStories = editionBriefs.length > 0;
   const hasVisibleStories = isTopicView
     ? topicStories.length > 0
     : groupedSections.some((section) => section.stories.length > 0);
-  const showLoading = !ready;
+  const hasWeeklyStories = (weeklyArchive?.storyCount ?? 0) > 0;
+  const showLoading = isTopicView ? weeklyLoading : !ready;
 
   const handleLoadMore = useCallback(async () => {
     if (isTopicView) return;
@@ -118,15 +133,14 @@ export function DashboardFeed({ query }: { query: string }) {
         <DashboardFeedSkeleton />
       ) : (
         <>
+      {!isTopicView && (
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-fin-subtle">
           <span className="font-semibold text-fin-navy">Daily edition</span>
           {fetchedAt && <span>{formatLastUpdated(fetchedAt)}</span>}
           {hasEditionStories && (
             <span>
-              {isTopicView
-                ? `${topicStories.length} topic ${topicStories.length === 1 ? "story" : "stories"}`
-                : `${editionBriefs.length} stories`}
+              {`${editionBriefs.length} stories`}
             </span>
           )}
         </div>
@@ -135,6 +149,22 @@ export function DashboardFeed({ query }: { query: string }) {
           {syncing && hasEditionStories ? " Syncing in background…" : ""}
         </p>
       </div>
+      )}
+
+      {isTopicView && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-fin-subtle">
+            <span className="font-semibold text-fin-navy">Following</span>
+            <span>{weekLabel}</span>
+            {topicStories.length > 0 && (
+              <span>
+                {topicStories.length} matching {topicStories.length === 1 ? "story" : "stories"}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-fin-subtle">Saved daily editions this week · no live fetch</p>
+        </div>
+      )}
 
       {apiError && (
         <p className="text-sm font-medium text-status-warning" role="status">
@@ -145,20 +175,35 @@ export function DashboardFeed({ query }: { query: string }) {
       {isTopicView && (
         <div className="flex flex-wrap gap-2">
           <span className="rounded-full bg-fin-brand px-3 py-1.5 text-xs font-semibold text-white">
-            {topicQuery} · today&apos;s edition
+            {topicQuery} · this week
           </span>
           <span className="rounded-full bg-fin-muted px-3 py-1.5 text-xs font-medium text-fin-subtle">
-            Filtered from saved daily edition
+            Filtered from saved stories this week
           </span>
         </div>
       )}
 
-      {isTopicView && topicStories.length === 0 && hasEditionStories ? (
+      {isTopicView && weeklyError && !hasWeeklyStories ? (
         <div className="fin-panel py-12 text-center">
-          <p className="text-sm font-medium text-fin-navy">No stories for {topicQuery} in today&apos;s edition</p>
+          <p className="text-sm font-medium text-fin-navy">{weeklyError}</p>
           <p className="mt-2 text-sm text-fin-subtle">
-            This topic has no matching stories in the current daily edition. Check back after the next update or
-            browse another topic.
+            Following topics use saved stories from the current week. Check back after more daily editions are saved.
+          </p>
+        </div>
+      ) : isTopicView && !hasWeeklyStories ? (
+        <div className="fin-panel py-12 text-center">
+          <p className="text-sm font-medium text-fin-navy">No saved stories this week yet</p>
+          <p className="mt-2 text-sm text-fin-subtle">
+            As daily editions are saved during the week, matching stories for {topicQuery} will appear here
+            automatically.
+          </p>
+        </div>
+      ) : isTopicView && topicStories.length === 0 ? (
+        <div className="fin-panel py-12 text-center">
+          <p className="text-sm font-medium text-fin-navy">No matching saved stories for {topicQuery} this week</p>
+          <p className="mt-2 text-sm text-fin-subtle">
+            None of this week&apos;s saved stories match this topic yet. Try another topic from the sidebar or check
+            back as more editions are saved.
           </p>
         </div>
       ) : !hasVisibleStories && !hasEditionStories ? (
@@ -174,8 +219,7 @@ export function DashboardFeed({ query }: { query: string }) {
           <div>
             <h3 className="fin-section-title">{topicQuery} stories</h3>
             <p className="text-sm text-fin-subtle">
-              Up to {topicStories.length} stor{topicStories.length === 1 ? "y" : "ies"} from today&apos;s saved
-              edition
+              Matching saved stories from this week, newest first
             </p>
           </div>
           <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">

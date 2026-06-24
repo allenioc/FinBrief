@@ -249,12 +249,13 @@ function topicMatchScore(
 export function filterBriefsForTopic(
   briefs: Brief[],
   topicQuery: string,
-  max: number = TOPIC_STORIES_MAX,
+  max?: number,
   watchlistItem?: Pick<WatchlistItem, "symbol" | "name" | "type">
 ): Brief[] {
   const trimmed = topicQuery.trim();
   if (!trimmed) return briefs;
 
+  const limit = max ?? TOPIC_STORIES_MAX;
   const config = resolveTopicConfig(trimmed, watchlistItem);
   const ranked = briefs
     .map((brief) => ({
@@ -268,7 +269,8 @@ export function filterBriefsForTopic(
         publishedTime(b.brief.publishedAt) - publishedTime(a.brief.publishedAt)
     );
 
-  return filterUniqueStories(ranked.map((entry) => entry.brief)).slice(0, max);
+  const unique = filterUniqueStories(ranked.map((entry) => entry.brief));
+  return Number.isFinite(limit) ? unique.slice(0, limit) : unique;
 }
 
 export function isTopicFilterQuery(query: string): boolean {

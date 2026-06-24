@@ -19,7 +19,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
   const isTopicView = query.length > 0;
   const title = isTopicView ? `${query} news feed` : "Understand markets with clarity";
   const description = isTopicView
-    ? `Stories for ${query} from today's saved daily edition.`
+    ? `Stories for ${query} from this week's saved archive.`
     : undefined;
 
   return (

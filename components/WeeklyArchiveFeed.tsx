@@ -1,15 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import {
-  buildWeeklyArchiveFromBriefs,
-  formatWeekLabel,
-  isDateKeyInCurrentWeek,
-  type WeeklyArchivePayload,
-} from "@/lib/weekly-archive";
-import { readEditionSnapshot } from "@/lib/daily-edition-client";
 import type { Brief } from "@/lib/types";
 import { ArticleCard } from "./ArticleCard";
+import { useWeeklyArchive } from "./useWeeklyArchive";
 
 const EMPTY_STATE_MESSAGE =
   "This week's archive is empty for now. As new daily editions are saved, their stories will appear here automatically.";
@@ -30,61 +23,15 @@ function WeeklyArchiveSkeleton() {
   );
 }
 
-function trustedSnapshotArchive(): WeeklyArchivePayload | null {
-  const snapshot = readEditionSnapshot();
-  if (!snapshot?.briefs.length) return null;
-  if (!isDateKeyInCurrentWeek(snapshot.editionDateKey)) return null;
-  return buildWeeklyArchiveFromBriefs(snapshot.briefs, snapshot.editionDateKey);
-}
-
 export function WeeklyArchiveFeed() {
-  const [archive, setArchive] = useState<WeeklyArchivePayload | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await fetch("/api/weekly-archive");
-        if (!response.ok) {
-          throw new Error("Could not load weekly archive.");
-        }
-        const payload = (await response.json()) as WeeklyArchivePayload;
-        if (cancelled) return;
-        setArchive(payload);
-      } catch {
-        if (cancelled) return;
-        const snapshotArchive = trustedSnapshotArchive();
-        if (snapshotArchive?.storyCount) {
-          setArchive(snapshotArchive);
-        } else {
-          setError("Could not load weekly archive.");
-          setArchive(null);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const weekLabel = archive?.weekLabel ?? formatWeekLabel();
+  const { archive, briefs: weeklyStories, loading, error, weekLabel } = useWeeklyArchive(true);
   const storyCount = archive?.storyCount ?? 0;
-  const weeklyStories = archive?.days.flatMap((day) => day.stories) ?? [];
 
   if (loading) {
     return <WeeklyArchiveSkeleton />;
   }
 
-  if (error && !archive?.storyCount) {
+  if (error && storyCount === 0) {
     return (
       <div className="fin-panel py-12 text-center">
         <p className="text-sm font-medium text-fin-navy">{error}</p>
