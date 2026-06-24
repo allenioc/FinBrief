@@ -171,23 +171,21 @@ export function groupBriefsIntoDayRecords(
   savedAt: string,
   reference: Date = new Date()
 ): WeeklyDayRecord[] {
-  const weekDates = new Set(currentWeekDateKeys(reference));
-  const byDay = new Map<string, WeeklyArchiveArticle[]>();
-
-  for (const brief of briefs.map(enrichBrief)) {
-    const groupDate = groupDateForStory(brief, savedEditionDate, reference);
-    if (!groupDate || !weekDates.has(groupDate)) continue;
-    const list = byDay.get(groupDate) ?? [];
-    list.push(briefToArchiveArticle(brief));
-    byDay.set(groupDate, list);
+  if (!isDateKeyInCurrentWeek(savedEditionDate, reference) || briefs.length === 0) {
+    return [];
   }
 
-  return [...byDay.entries()].map(([editionDate, articles]) => ({
-    editionDate,
-    savedAt,
-    weekKey: weekKeyFromDateKey(editionDate),
-    articles,
-  }));
+  const articles = briefs.map(enrichBrief).map((brief) => briefToArchiveArticle(brief));
+  if (articles.length === 0) return [];
+
+  return [
+    {
+      editionDate: savedEditionDate,
+      savedAt,
+      weekKey: weekKeyFromDateKey(savedEditionDate),
+      articles,
+    },
+  ];
 }
 
 function mergeDayRecords(target: Map<string, WeeklyDayRecord>, incoming: WeeklyDayRecord): void {
@@ -319,17 +317,24 @@ export function buildWeeklyArchivePayload(
   };
 }
 
-/** Client-side helper when only today's saved edition snapshot is available. */
+/** Client-side helper when a saved edition snapshot for the current week is available. */
 export function buildWeeklyArchiveFromBriefs(
   briefs: Brief[],
   savedEditionDate: string = localDateKey(),
   reference: Date = new Date()
 ): WeeklyArchivePayload {
   const weekKey = weekKeyFromDate(reference);
+  if (!isDateKeyInCurrentWeek(savedEditionDate, reference) || briefs.length === 0) {
+    return buildWeeklyArchivePayload([], weekKey, reference);
+  }
   const dayRecords = groupBriefsIntoDayRecords(briefs, savedEditionDate, new Date().toISOString(), reference);
   return buildWeeklyArchivePayload(dayRecords, weekKey, reference);
 }
 
 export function weeklyDayCacheKey(editionDate: string): string {
   return `weekly-day::${editionDate}`;
+}
+
+export function datedEditionCacheKey(editionDate: string): string {
+  return `edition-by-date::${editionDate}`;
 }

@@ -1,49 +1,36 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   buildWeeklyArchiveFromBriefs,
   formatWeekLabel,
+  isDateKeyInCurrentWeek,
   type WeeklyArchivePayload,
 } from "@/lib/weekly-archive";
 import { readEditionSnapshot } from "@/lib/daily-edition-client";
 import type { Brief } from "@/lib/types";
-import { useDailyEdition } from "./DailyEditionProvider";
 import { ArticleCard } from "./ArticleCard";
 
-function snapshotArchive(): WeeklyArchivePayload | null {
+const EMPTY_STATE_MESSAGE =
+  "This week's archive is empty for now. As new daily editions are saved, their stories will appear here automatically.";
+
+function currentWeekSnapshotArchive(): WeeklyArchivePayload | null {
   const snapshot = readEditionSnapshot();
   if (!snapshot?.briefs.length) return null;
+  if (!isDateKeyInCurrentWeek(snapshot.editionDateKey)) return null;
   return buildWeeklyArchiveFromBriefs(snapshot.briefs, snapshot.editionDateKey);
 }
 
 export function WeeklyArchiveFeed() {
-  const { editionBriefs, ready: editionReady } = useDailyEdition();
-  const clientArchive = useMemo(() => {
-    const fromSnapshot = snapshotArchive();
-    if (fromSnapshot?.storyCount) return fromSnapshot;
-    if (editionBriefs.length > 0) {
-      return buildWeeklyArchiveFromBriefs(editionBriefs);
-    }
-    return null;
-  }, [editionBriefs]);
-
-  const [archive, setArchive] = useState<WeeklyArchivePayload | null>(() => clientArchive);
-  const [loading, setLoading] = useState(() => !clientArchive);
+  const [archive, setArchive] = useState<WeeklyArchivePayload | null>(() => currentWeekSnapshotArchive());
+  const [loading, setLoading] = useState(() => !currentWeekSnapshotArchive()?.storyCount);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (clientArchive?.storyCount) {
-      setArchive((prev) => (prev && prev.storyCount >= clientArchive.storyCount ? prev : clientArchive));
-      setLoading(false);
-    }
-  }, [clientArchive]);
 
   useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
-      if (!clientArchive) setLoading(true);
+      setLoading(true);
       setError(null);
       try {
         const response = await fetch("/api/weekly-archive");
@@ -52,15 +39,15 @@ export function WeeklyArchiveFeed() {
         }
         const payload = (await response.json()) as WeeklyArchivePayload;
         if (cancelled) return;
-        if (payload.storyCount > 0) {
-          setArchive(payload);
-        } else {
-          setArchive((prev) => prev ?? clientArchive ?? payload);
-        }
+        setArchive(payload);
       } catch {
         if (cancelled) return;
-        if (!clientArchive) {
+        const snapshotArchive = currentWeekSnapshotArchive();
+        if (snapshotArchive?.storyCount) {
+          setArchive(snapshotArchive);
+        } else {
           setError("Could not load weekly archive.");
+          setArchive(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -71,35 +58,22 @@ export function WeeklyArchiveFeed() {
     return () => {
       cancelled = true;
     };
-  }, [clientArchive]);
-
-  useEffect(() => {
-    if (!editionReady || editionBriefs.length === 0) return;
-    const derived = buildWeeklyArchiveFromBriefs(editionBriefs);
-    if (derived.storyCount === 0) return;
-    setArchive((prev) => {
-      if (prev && prev.storyCount >= derived.storyCount) return prev;
-      return derived;
-    });
-    setLoading(false);
-  }, [editionBriefs, editionReady]);
+  }, []);
 
   const weekLabel = archive?.weekLabel ?? formatWeekLabel();
   const storyCount = archive?.storyCount ?? 0;
 
-  if (loading && !archive) {
+  if (loading && !archive?.storyCount) {
     return (
       <p className="fin-panel py-12 text-center text-sm text-fin-subtle">Loading this week&apos;s archive…</p>
     );
   }
 
-  if (error && !archive) {
+  if (error && !archive?.storyCount) {
     return (
       <div className="fin-panel py-12 text-center">
         <p className="text-sm font-medium text-fin-navy">{error}</p>
-        <p className="mt-2 text-sm text-fin-subtle">
-          Weekly archive uses saved daily editions only. It will populate as daily editions are saved.
-        </p>
+        <p className="mt-2 text-sm text-fin-subtle">{EMPTY_STATE_MESSAGE}</p>
       </div>
     );
   }
@@ -107,11 +81,7 @@ export function WeeklyArchiveFeed() {
   if (!archive || storyCount === 0) {
     return (
       <div className="fin-panel py-12 text-center">
-        <p className="text-sm font-medium text-fin-navy">No saved stories this week yet</p>
-        <p className="mt-2 text-sm text-fin-subtle">
-          The archive will populate as daily editions are saved. It starts fresh each Sunday and never calls live
-          news providers.
-        </p>
+        <p className="text-sm text-fin-subtle">{EMPTY_STATE_MESSAGE}</p>
       </div>
     );
   }
