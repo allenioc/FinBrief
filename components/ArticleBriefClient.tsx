@@ -6,6 +6,7 @@ import type { Brief } from "@/lib/types";
 import { enrichBrief } from "@/lib/article-analysis";
 import { peekDashboardReturnHref } from "@/lib/dashboard-scroll-restore";
 import { ArticleDetail } from "./ArticleDetail";
+import { ArticleBriefFloatingBack } from "./ArticleBriefFloatingBack";
 
 /**
  * Resolves the clicked article in the browser. Server caches on Vercel are
@@ -115,6 +116,7 @@ export function ArticleBriefClient({
       <Link href={backHref} className="fin-link text-sm">
         ← Back
       </Link>
+      <ArticleBriefFloatingBack fallbackHref={backHref} />
       <div className="mt-6">
         <ArticleDetail article={article} />
       </div>
