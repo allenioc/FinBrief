@@ -9,7 +9,6 @@ import {
   datedEditionCacheKey,
   isDateKeyInCurrentWeek,
   mergeWeeklyDayRecord,
-  mergeWeeklyDayRecords,
   weekKeyFromDate,
   weekKeyFromDateKey,
   weeklyArchiveCacheKey,
@@ -98,6 +97,44 @@ async function mirrorDayRecord(record: WeeklyDayRecord): Promise<void> {
   ]);
 }
 
+function recordBelongsToWeek(
+  record: WeeklyDayRecord,
+  weekKey: string,
+  reference: Date = new Date()
+): boolean {
+  if (!isDateKeyInCurrentWeek(record.editionDate, reference)) return false;
+  const recordWeekKey = record.weekKey || weekKeyFromDateKey(record.editionDate);
+  return recordWeekKey === weekKey;
+}
+
+/** Merge week-level store with per-day weekly caches so earlier days are never dropped. */
+async function hydrateWeekDayRecords(
+  weekKey: string,
+  reference: Date = new Date()
+): Promise<WeeklyDayRecord[]> {
+  const dayMap = new Map<string, WeeklyDayRecord>();
+
+  const addRecord = (record: WeeklyDayRecord | null | undefined) => {
+    if (!record?.articles.length) return;
+    if (!recordBelongsToWeek(record, weekKey, reference)) return;
+    dayMap.set(record.editionDate, mergeWeeklyDayRecord(dayMap.get(record.editionDate), record));
+  };
+
+  const weekStore = await loadWeekStore(weekKey);
+  for (const record of weekStore?.dayRecords ?? []) {
+    addRecord(record);
+  }
+
+  for (const editionDate of currentWeekDateKeys(reference)) {
+    addRecord(await loadWeeklyDayRecord(editionDate));
+    if (!dayMap.has(editionDate)) {
+      addRecord(await loadDatedEditionRecord(editionDate));
+    }
+  }
+
+  return [...dayMap.values()].sort((a, b) => b.editionDate.localeCompare(a.editionDate));
+}
+
 /**
  * Append unique stories from a daily edition into the persistent week archive.
  * Never replaces earlier saved weekly stories; merges and dedupes by URL/title.
@@ -116,15 +153,8 @@ export async function appendDailyEditionToWeek(editionDate: string, briefs: Brie
     articles: enrichBriefs(briefs).map((brief) => briefToArchiveArticle(brief)),
   };
 
-  const existingStore =
-    (await loadWeekStore(weekKey)) ??
-    ({
-      weekKey,
-      updatedAt: new Date().toISOString(),
-      dayRecords: [],
-    } satisfies WeeklyArchiveStore);
-
-  const dayMap = new Map(existingStore.dayRecords.map((record) => [record.editionDate, record]));
+  const hydratedRecords = await hydrateWeekDayRecords(weekKey);
+  const dayMap = new Map(hydratedRecords.map((record) => [record.editionDate, record]));
   const mergedDay = mergeWeeklyDayRecord(dayMap.get(editionDate), incomingDay);
   dayMap.set(editionDate, mergedDay);
 
@@ -145,34 +175,14 @@ export async function saveDailyEditionForWeek(editionDate: string, briefs: Brief
   await appendDailyEditionToWeek(editionDate, briefs);
 }
 
-async function migrateLegacyDayRecords(reference: Date, weekKey: string): Promise<WeeklyDayRecord[]> {
-  const dayRecords: WeeklyDayRecord[] = [];
-  for (const editionDate of currentWeekDateKeys(reference)) {
-    const record = await loadDatedEditionRecord(editionDate);
-    if (record?.articles.length && record.weekKey === weekKey) {
-      dayRecords.push(record);
-    }
-  }
-  return mergeWeeklyDayRecords(dayRecords);
-}
-
 /** Read-only weekly archive for the current calendar week (saved dated editions only). */
 export async function loadWeeklyArchive(reference: Date = new Date()): Promise<WeeklyArchivePayload> {
   const weekKey = weekKeyFromDate(reference);
-  let dayRecords: WeeklyDayRecord[] = [];
+  const dayRecords = await hydrateWeekDayRecords(weekKey, reference);
 
-  const weekStore = await loadWeekStore(weekKey);
-  if (weekStore?.dayRecords.length) {
-    dayRecords = weekStore.dayRecords.filter(
-      (record) =>
-        record.weekKey === weekKey && isDateKeyInCurrentWeek(record.editionDate, reference)
-    );
-  }
-
-  // One-time migration from legacy per-day edition caches only — never live providers.
-  if (dayRecords.length === 0) {
-    dayRecords = await migrateLegacyDayRecords(reference, weekKey);
-    if (dayRecords.length > 0) {
+  if (dayRecords.length > 0) {
+    const weekStore = await loadWeekStore(weekKey);
+    if ((weekStore?.dayRecords.length ?? 0) < dayRecords.length) {
       await persistWeekStore({
         weekKey,
         updatedAt: new Date().toISOString(),
@@ -181,6 +191,5 @@ export async function loadWeeklyArchive(reference: Date = new Date()): Promise<W
     }
   }
 
-  dayRecords.sort((a, b) => b.editionDate.localeCompare(a.editionDate));
   return buildWeeklyArchivePayload(dayRecords, weekKey, reference);
 }
