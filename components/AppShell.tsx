@@ -49,7 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-fin-bg">
-      <div className="hidden lg:flex">
+      <div className="hidden shrink-0 lg:sticky lg:top-0 lg:flex lg:h-screen lg:self-start">
         <Suspense fallback={<div className="h-full w-[260px] border-r border-fin-border bg-fin-sidebar" />}>
           <Sidebar />
         </Suspense>
