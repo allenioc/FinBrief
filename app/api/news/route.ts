@@ -21,6 +21,7 @@ import {
 } from "@/lib/daily-edition";
 import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
 import { saveDailyEditionForWeek, syncLiveEditionToWeekArchive, resolveWeeklyEditionDate } from "@/lib/weekly-archive-store";
+import { mirrorRollingBroadEditionToWeek } from "@/lib/weekly-edition-sync";
 import type { Brief } from "@/lib/types";
 
 type CachedPayload = {
@@ -577,6 +578,9 @@ export async function GET(request: NextRequest) {
 
   if (!adminRefresh) {
     const savedEdition = await cacheGet<EditionRecord>(editionKey);
+    if (isBroadDashboardEdition) {
+      await mirrorRollingBroadEditionToWeek();
+    }
     const lastGood = await cacheGet<LastGoodRecord>(lastGoodKey);
     const cooldownRecord = await readFetchCooldown(scopeKey);
     const retryAt = Math.max(failureCooldownByScope.get(scopeKey) ?? 0, cooldownRecord?.retryAt ?? 0);
@@ -762,6 +766,9 @@ export async function GET(request: NextRequest) {
   let lastSuccessfulFetchedAt: string | null = null;
 
   if (shouldSaveLiveEdition) {
+    if (isBroadDashboardEdition) {
+      await mirrorRollingBroadEditionToWeek();
+    }
     const enrichedPayload = enrichPayloadBriefs(payload);
     await Promise.all([
       cacheSet(editionKey, {
