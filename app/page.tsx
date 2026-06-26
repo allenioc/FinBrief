@@ -6,7 +6,6 @@ import { RecommendedTopics } from "@/components/RecommendedTopics";
 import { NewsletterWaitlist } from "@/components/NewsletterWaitlist";
 import { SearchBar } from "@/components/SearchBar";
 import { WatchlistHighlights } from "@/components/WatchlistHighlights";
-import { TRENDING_SEARCHES } from "@/lib/mock-data";
 import { BRAND } from "@/lib/theme";
 
 interface HomeProps {
@@ -30,7 +29,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
         description={description}
       >
         <Suspense fallback={<div className="h-28 animate-pulse rounded-panel bg-fin-muted" />}>
-          <SearchBar trending={TRENDING_SEARCHES} />
+          <SearchBar />
         </Suspense>
       </PageHeader>
 

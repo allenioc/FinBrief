@@ -5,10 +5,8 @@ import { FormEvent, useState } from "react";
 
 export function SearchBar({
   placeholder = "Search ticker or topic — AAPL, SPY, inflation, interest rates…",
-  trending = [] as string[],
 }: {
   placeholder?: string;
-  trending?: string[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -18,11 +16,6 @@ export function SearchBar({
     e.preventDefault();
     const q = query.trim();
     router.push(q ? `/?q=${encodeURIComponent(q)}` : "/");
-  }
-
-  function searchTrending(term: string) {
-    setQuery(term);
-    router.push(`/?q=${encodeURIComponent(term)}`);
   }
 
   return (
@@ -56,21 +49,6 @@ export function SearchBar({
           Get briefings
         </button>
       </form>
-      {trending.length > 0 && (
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-fin-border pt-4">
-          <span className="fin-label">Popular</span>
-          {trending.map((term) => (
-            <button
-              key={term}
-              type="button"
-              onClick={() => searchTrending(term)}
-              className="rounded-full border border-fin-border bg-fin-surface px-3 py-1 font-mono text-xs font-medium text-fin-navy transition-colors hover:border-fin-brand hover:bg-fin-brand-soft hover:text-fin-brand"
-            >
-              {term}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
