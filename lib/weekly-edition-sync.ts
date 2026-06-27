@@ -1,7 +1,7 @@
 import { isLiveEditionPayload } from "./daily-edition";
-import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT } from "./news-constants";
 import { cacheGet } from "./news-cache";
 import type { Brief } from "./types";
+import { broadEditionCacheKey } from "./weekly-archive";
 import { saveDailyEditionForWeek } from "./weekly-archive-store";
 
 type RollingEditionRecord = {
@@ -12,11 +12,6 @@ type RollingEditionRecord = {
     articleCount?: number;
   };
 };
-
-function broadEditionCacheKey(): string {
-  const queryKey = BROAD_NEWS_QUERY.toLowerCase();
-  return `edition::${queryKey}::week::${DAILY_EDITION_ARTICLE_LIMIT}::1`;
-}
 
 /**
  * Mirror the rolling broad daily edition cache into dated weekly buckets.

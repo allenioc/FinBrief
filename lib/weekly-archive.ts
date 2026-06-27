@@ -1,4 +1,5 @@
 import { enrichBrief } from "./article-analysis";
+import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT } from "./news-constants";
 import { isSameStory, scoreStoryQuality } from "./story-dedup";
 import type { Brief, SourceLink } from "./types";
 
@@ -373,4 +374,9 @@ export function weeklyDayCacheKey(editionDate: string): string {
 
 export function datedEditionCacheKey(editionDate: string): string {
   return `edition-by-date::${editionDate}`;
+}
+
+export function broadEditionCacheKey(): string {
+  const queryKey = BROAD_NEWS_QUERY.toLowerCase();
+  return `edition::${queryKey}::week::${DAILY_EDITION_ARTICLE_LIMIT}::1`;
 }

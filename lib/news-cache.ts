@@ -22,6 +22,15 @@ const KV_URL = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL
 const KV_TOKEN = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN ?? "";
 const KV_KEY_PREFIX = "finbrief:";
 const KV_TTL_SECONDS = 7 * 24 * 60 * 60;
+const WEEKLY_KV_TTL_SECONDS = 14 * 24 * 60 * 60;
+
+export function isWeeklyPersistenceKey(key: string): boolean {
+  return (
+    key.startsWith("weekly-archive::") ||
+    key.startsWith("weekly-day::") ||
+    key.startsWith("edition-by-date::")
+  );
+}
 
 export function hasDurableCache(): boolean {
   return Boolean(KV_URL && KV_TOKEN);
@@ -67,7 +76,7 @@ async function kvGet<T>(key: string): Promise<T | null> {
   }
 }
 
-async function kvSet(key: string, value: unknown): Promise<void> {
+async function kvSet(key: string, value: unknown, ttlSeconds = KV_TTL_SECONDS): Promise<void> {
   try {
     await fetch(KV_URL, {
       method: "POST",
@@ -75,7 +84,7 @@ async function kvSet(key: string, value: unknown): Promise<void> {
         authorization: `Bearer ${KV_TOKEN}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify(["SET", KV_KEY_PREFIX + key, JSON.stringify(value), "EX", KV_TTL_SECONDS]),
+      body: JSON.stringify(["SET", KV_KEY_PREFIX + key, JSON.stringify(value), "EX", ttlSeconds]),
       cache: "no-store",
     });
   } catch {
@@ -123,6 +132,9 @@ export async function cacheGet<T>(key: string): Promise<{ value: T; tier: CacheT
 export async function cacheSet(key: string, value: unknown): Promise<void> {
   memory.set(key, value);
   const writes: Array<Promise<void>> = [fileSet(key, value)];
-  if (hasDurableCache()) writes.push(kvSet(key, value));
+  if (hasDurableCache()) {
+    const ttl = isWeeklyPersistenceKey(key) ? WEEKLY_KV_TTL_SECONDS : KV_TTL_SECONDS;
+    writes.push(kvSet(key, value, ttl));
+  }
   await Promise.all(writes);
 }

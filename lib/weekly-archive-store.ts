@@ -1,13 +1,21 @@
 import { enrichBrief } from "./article-analysis";
 import { dateKeyFromFetchedAt } from "./daily-edition";
-import { cacheGet, cacheSet } from "./news-cache";
+import {
+  cacheBackendDescription,
+  cacheGet,
+  cacheSet,
+  hasDurableCache,
+  type CacheTier,
+} from "./news-cache";
 import type { Brief } from "./types";
 import {
   briefToArchiveArticle,
+  broadEditionCacheKey,
   buildWeeklyArchivePayload,
   currentWeekDateKeys,
   datedEditionCacheKey,
   isDateKeyInCurrentWeek,
+  localDateKey,
   mergeWeeklyDayRecord,
   weekKeyFromDate,
   weekKeyFromDateKey,
@@ -87,6 +95,21 @@ async function loadWeekStore(weekKey: string): Promise<WeeklyArchiveStore | null
 }
 
 async function persistWeekStore(store: WeeklyArchiveStore): Promise<void> {
+  const existing = await loadWeekStore(store.weekKey);
+  if (existing?.dayRecords.length) {
+    const merged = new Map<string, WeeklyDayRecord>();
+    const mergeIn = (record: WeeklyDayRecord) => {
+      merged.set(record.editionDate, mergeWeeklyDayRecord(merged.get(record.editionDate), record));
+    };
+    for (const record of existing.dayRecords) mergeIn(record);
+    for (const record of store.dayRecords) mergeIn(record);
+    store = {
+      ...store,
+      dayRecords: [...merged.values()]
+        .filter((record) => isDateKeyInCurrentWeek(record.editionDate))
+        .sort((a, b) => b.editionDate.localeCompare(a.editionDate)),
+    };
+  }
   await cacheSet(weeklyArchiveCacheKey(store.weekKey), store);
 }
 
@@ -192,4 +215,81 @@ export async function loadWeeklyArchive(reference: Date = new Date()): Promise<W
   }
 
   return buildWeeklyArchivePayload(dayRecords, weekKey, reference);
+}
+
+export type WeeklyDayBucketDiagnostics = {
+  editionDate: string;
+  weeklyDayKey: string;
+  weeklyDayArticles: number;
+  weeklyDayReadTier: CacheTier | null;
+  editionByDateKey: string;
+  editionByDateArticles: number;
+  editionByDateReadTier: CacheTier | null;
+};
+
+export type WeeklyStorageDiagnostics = {
+  cacheBackend: string;
+  durableCacheConfigured: boolean;
+  storageWarning: string | null;
+  weekKey: string;
+  weekStoreKey: string;
+  weekStoreReadTier: CacheTier | null;
+  weekStoreDayRecords: Array<{ editionDate: string; articles: number }>;
+  rollingEditionKey: string;
+  rollingEditionDate: string | null;
+  rollingEditionArticles: number;
+  rollingEditionReadTier: CacheTier | null;
+  dayBuckets: WeeklyDayBucketDiagnostics[];
+};
+
+/** Inspect weekly cache keys/tiers for ops debugging (no secrets, no provider calls). */
+export async function diagnoseWeeklyStorage(reference: Date = new Date()): Promise<WeeklyStorageDiagnostics> {
+  const weekKey = weekKeyFromDate(reference);
+  const today = localDateKey(reference);
+  const weekStoreKey = weeklyArchiveCacheKey(weekKey);
+  const weekStoreHit = await cacheGet<WeeklyArchiveStore>(weekStoreKey);
+  const rollingKey = broadEditionCacheKey();
+  const rollingHit = await cacheGet<{
+    editionDate: string;
+    payload: { briefs: Brief[]; provider?: string; articleCount?: number };
+  }>(rollingKey);
+
+  const dayBuckets: WeeklyDayBucketDiagnostics[] = [];
+  for (const editionDate of currentWeekDateKeys(reference)) {
+    if (editionDate > today) continue;
+    const weeklyDayKey = weeklyDayCacheKey(editionDate);
+    const editionByDateKey = datedEditionCacheKey(editionDate);
+    const weeklyDayHit = await cacheGet<WeeklyDayRecord>(weeklyDayKey);
+    const editionByDateHit = await cacheGet<WeeklyDayRecord>(editionByDateKey);
+    dayBuckets.push({
+      editionDate,
+      weeklyDayKey,
+      weeklyDayArticles: weeklyDayHit?.value.articles.length ?? 0,
+      weeklyDayReadTier: weeklyDayHit?.tier ?? null,
+      editionByDateKey,
+      editionByDateArticles: editionByDateHit?.value.articles.length ?? 0,
+      editionByDateReadTier: editionByDateHit?.tier ?? null,
+    });
+  }
+
+  const durable = hasDurableCache();
+  return {
+    cacheBackend: cacheBackendDescription(),
+    durableCacheConfigured: durable,
+    storageWarning: durable
+      ? null
+      : "Weekly buckets use memory + /tmp file cache only. Without KV_REST_API_URL + KV_REST_API_TOKEN, dated buckets are lost on Vercel redeploys and cold starts.",
+    weekKey,
+    weekStoreKey,
+    weekStoreReadTier: weekStoreHit?.tier ?? null,
+    weekStoreDayRecords: (weekStoreHit?.value.dayRecords ?? []).map((record) => ({
+      editionDate: record.editionDate,
+      articles: record.articles.length,
+    })),
+    rollingEditionKey: rollingKey,
+    rollingEditionDate: rollingHit?.value.editionDate ?? null,
+    rollingEditionArticles: rollingHit?.value.payload.briefs.length ?? 0,
+    rollingEditionReadTier: rollingHit?.tier ?? null,
+    dayBuckets,
+  };
 }
