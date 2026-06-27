@@ -4,7 +4,7 @@ import {
   cacheBackendDescription,
   cacheGet,
   cacheSet,
-  hasDurableCache,
+  isDurableCacheAvailable,
   type CacheTier,
 } from "./news-cache";
 import type { Brief } from "./types";
@@ -272,13 +272,13 @@ export async function diagnoseWeeklyStorage(reference: Date = new Date()): Promi
     });
   }
 
-  const durable = hasDurableCache();
+  const durable = await isDurableCacheAvailable();
   return {
     cacheBackend: cacheBackendDescription(),
     durableCacheConfigured: durable,
     storageWarning: durable
       ? null
-      : "Weekly buckets use memory + /tmp file cache only. Without KV_REST_API_URL + KV_REST_API_TOKEN, dated buckets are lost on Vercel redeploys and cold starts.",
+      : "Weekly buckets use memory + /tmp file cache only. Set REDIS_URL (Vercel Redis) or KV_REST_API_URL + KV_REST_API_TOKEN so dated buckets survive redeploys and cold starts.",
     weekKey,
     weekStoreKey,
     weekStoreReadTier: weekStoreHit?.tier ?? null,
