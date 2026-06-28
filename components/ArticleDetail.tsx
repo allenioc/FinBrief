@@ -162,13 +162,13 @@ export function ArticleDetail({ article }: { article: Brief }) {
           <div className="space-y-4">
             <h2 className="fin-section-title">Analysis</h2>
             <Section title="Bullish interpretation" variant="bull">
-              {article.bullCase}
+              {enriched.bullCase}
             </Section>
             <Section title="Bearish interpretation" variant="bear">
-              {article.bearCase}
+              {enriched.bearCase}
             </Section>
             <Section title="Neutral / uncertain view" variant="neutral">
-              {article.neutralView}
+              {enriched.neutralView}
             </Section>
             <Section title="Key risks">
               <ul className="list-inside list-disc space-y-2">

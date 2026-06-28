@@ -393,7 +393,7 @@ function isNearDuplicate(candidate: string, existing: string[]): boolean {
   });
 }
 
-function cleanBullet(text: string, max = 160): string {
+function cleanBullet(text: string, max = 220): string {
   let value = stripEllipsis(normalizeWhitespace(text));
   if (!value) return "";
   if (value.length <= max) return value.endsWith(".") ? value.slice(0, -1) : value;
@@ -424,6 +424,18 @@ function finalizeParagraphText(text: string, minWords = 10): string {
 
   if (countWords(value) < minWords) return "";
   return value;
+}
+
+function composeDetailParagraph(sentences: string[], maxSentences = 3, minWords = 14): string {
+  const parts: string[] = [];
+  for (const sentence of sentences) {
+    const finalized = finalizeParagraphText(sentence, 8);
+    if (!finalized || isNearDuplicate(finalized, parts)) continue;
+    parts.push(finalized);
+    if (parts.length >= maxSentences) break;
+  }
+  const paragraph = parts.join(" ");
+  return finalizeParagraphText(paragraph, minWords) || parts[0] || "";
 }
 
 function pickThirtySecondBullet(
@@ -800,71 +812,67 @@ function buildWatchBullet(
 
   if (previewFacts.hasWarning) {
     return cleanBullet(
-      "Next steps to watch include whether regulators or lenders escalate action after the warning language in the preview",
-      140
+      "Watch whether regulators, lenders, or company officials follow up on the warning language with formal action, revised guidance, or a clearer timeline"
     ).replace(/\.$/, "");
   }
 
   if (previewFacts.amounts.some((amount) => /\bbillion|bn|million|m\b/i.test(amount))) {
+    const amount =
+      previewFacts.amounts.find((item) => /\bbillion|bn|million|m\b/i.test(item)) ?? previewFacts.amounts[0];
     return cleanBullet(
-      `Track whether the ${previewFacts.amounts.find((amount) => /\bbillion|bn|million|m\b/i.test(amount)) ?? previewFacts.amounts[0]} figure holds as fuller reporting emerges`,
-      140
+      `Watch whether the ${amount} figure holds up as fuller reporting, filings, or official statements confirm or revise the numbers cited so far`
     ).replace(/\.$/, "");
   }
 
   if (!financeRelated) {
     const civic = extractCivicAffectedParties(ctx.headline, ctx.excerpt);
     if (civic.length > 0) {
-      return cleanBullet(`Follow whether local officials or agencies update guidance for ${formatSubjectList(civic)}`, 140).replace(
-        /\.$/,
-        ""
-      );
+      return cleanBullet(
+        `Watch whether local officials or agencies update guidance, services, or enforcement affecting ${formatSubjectList(civic)}`
+      ).replace(/\.$/, "");
     }
     if (previewFacts.headlineTopic) {
-      return cleanBullet(`Look for the next published update on ${previewFacts.headlineTopic} from ${ctx.source || "the publisher"}`, 140).replace(
-        /\.$/,
-        ""
-      );
+      return cleanBullet(
+        `Look for the next published update on ${previewFacts.headlineTopic} from ${ctx.source || "the publisher"} that adds timeline, scope, or official response`
+      ).replace(/\.$/, "");
     }
-    return cleanBullet("Look for the next published update that adds timeline and procedural detail", 140).replace(/\.$/, "");
+    return cleanBullet(
+      "Look for the next published update that adds timeline, procedural detail, and confirmation from an official source"
+    ).replace(/\.$/, "");
   }
   if (/\bguidance|outlook|forecast|expects|expected\b/.test(lower)) {
-    return cleanBullet("Track whether management guidance or analyst expectations change after the full report is published", 140).replace(
-      /\.$/,
-      ""
-    );
+    return cleanBullet(
+      "Watch whether management guidance, analyst estimates, or the next earnings call confirm, raise, or cut the expectations implied by the reporting"
+    ).replace(/\.$/, "");
   }
   if (/\bquarter|results|earnings|revenue\b/.test(lower)) {
-    return cleanBullet("Track the next official filing, earnings call, or follow-up report on the same topic", 140).replace(
-      /\.$/,
-      ""
-    );
+    return cleanBullet(
+      "Watch the next official filing, earnings call, or sector peer report to see whether the trend in the reporting is confirmed or starts to fade"
+    ).replace(/\.$/, "");
   }
   if (/\bfed|rate|inflation|cpi\b/.test(lower)) {
-    return cleanBullet("Track the next policy statement, economic release, or market reaction tied to the same theme", 140).replace(
-      /\.$/,
-      ""
-    );
+    return cleanBullet(
+      "Watch the next policy statement, inflation release, or market reaction to see whether rate expectations shift materially after this headline"
+    ).replace(/\.$/, "");
   }
   if (/\bdeal|merger|acquisition|takeover\b/.test(lower)) {
-    return cleanBullet("Track regulatory filings, counteroffers, or updates on whether the deal progresses", 140).replace(
-      /\.$/,
-      ""
-    );
+    return cleanBullet(
+      "Watch regulatory filings, financing terms, and rival bids for signs that the deal is moving forward, stalling, or being repriced"
+    ).replace(/\.$/, "");
   }
   if (entity) {
-    return cleanBullet(`Track the next ${entity} disclosure or statement from ${ctx.source || "the publisher"}`, 140).replace(
-      /\.$/,
-      ""
-    );
+    return cleanBullet(
+      `Watch the next ${entity} disclosure, filing, or statement from ${ctx.source || "the publisher"} for confirmation of timing, scope, and financial impact`
+    ).replace(/\.$/, "");
   }
   if (previewFacts.organizations.length > 0) {
     return cleanBullet(
-      `Track whether ${previewFacts.organizations[0]} issue further statements on the figures cited in the preview`,
-      140
+      `Watch whether ${previewFacts.organizations[0]} issue further statements that clarify the figures, warnings, or next steps cited in the reporting`
     ).replace(/\.$/, "");
   }
-  return cleanBullet("Track the next source update that confirms timing, scope, or official response", 140).replace(/\.$/, "");
+  return cleanBullet(
+    "Watch the next verified source update that confirms timing, scope, official response, and whether the story is widening or fading"
+  ).replace(/\.$/, "");
 }
 
 export function estimateSentiment(text: string): {
@@ -1475,8 +1483,11 @@ const SUMMARY_FALLBACK_MIN = 120;
 const SUMMARY_PARAGRAPH_SENTENCE_MIN = 3;
 const SUMMARY_PARAGRAPH_SENTENCE_MAX = 5;
 
-/** Bump when Article Brief copy rules change so client caches refresh. */
+/** Bump when FinBrief summary copy rules change (affects daily edition cache trust). */
 export const SUMMARY_COPY_VERSION = 5;
+
+/** Bump when Article Brief explanation sections change (30-sec, why it matters, analysis). */
+export const EXPLANATION_COPY_VERSION = 1;
 
 const SUMMARY_PARAGRAPH_COUNT = 3;
 
@@ -3131,32 +3142,56 @@ function buildThirtySecondStakeBullet(
   void financeRelated;
   if (facts.organizations.length > 0 && facts.amounts.length > 0) {
     return cleanBullet(
-      `${facts.organizations[0]} are tied to a potential ${facts.amounts[facts.amounts.length - 1]} exposure`,
-      140
+      `${facts.organizations[0]} are linked in the reporting to a potential ${facts.amounts[facts.amounts.length - 1]} exposure, which sets the financial scale of the story`
+    ).replace(/\.$/, "");
+  }
+
+  if (facts.quotedPhrases.length > 0 && facts.hasWarning) {
+    return cleanBullet(
+      `Officials used "${facts.quotedPhrases[0]}" warning language in the reporting, signaling that the issue may carry legal, regulatory, or reputational weight`
+    ).replace(/\.$/, "");
+  }
+
+  if (entity && facts.amounts.length > 0) {
+    return cleanBullet(
+      `${entity} is named alongside a ${facts.amounts[0]} figure that anchors how large the market or policy impact could be`
     ).replace(/\.$/, "");
   }
 
   if (entity) {
-    return cleanBullet(`${entity} is named directly in the reporting`, 140).replace(/\.$/, "");
+    return cleanBullet(
+      `${entity} is the company most directly referenced in the reporting, making its shareholders and analysts the core audience for follow-up disclosures`
+    ).replace(/\.$/, "");
   }
 
   const civic = extractCivicAffectedParties(headline, excerpt);
   if (civic.length > 0) {
-    return cleanBullet(`Those most directly affected include ${formatSubjectList(civic)}`, 140).replace(/\.$/, "");
+    return cleanBullet(
+      `${formatSubjectList(civic)} are the groups named in the reporting as facing the most immediate practical effects`
+    ).replace(/\.$/, "");
   }
 
   if (facts.amounts.length > 0) {
-    return cleanBullet(`The cited ${facts.amounts[0]} figure sets the scale discussed in the story`, 140).replace(
-      /\.$/,
-      ""
-    );
+    return cleanBullet(
+      `The ${facts.amounts[0]} figure cited in the reporting defines the scale of payouts, losses, or policy stakes under discussion`
+    ).replace(/\.$/, "");
+  }
+
+  if (facts.organizations.length > 0) {
+    return cleanBullet(
+      `${facts.organizations[0]} is a central institution in the reporting and helps explain why the update carries broader significance`
+    ).replace(/\.$/, "");
   }
 
   if (ctx.subjects.length > 0) {
-    return cleanBullet(`The story centers on ${formatSubjectList(ctx.subjects)}`, 140).replace(/\.$/, "");
+    return cleanBullet(
+      `The reporting ties the development to ${formatSubjectList(ctx.subjects)}, which clarifies who carries the most direct stake`
+    ).replace(/\.$/, "");
   }
 
-  return cleanBullet("The named institutions and communities carry the most direct stake").replace(/\.$/, "");
+  return cleanBullet(
+    "The excerpt highlights the specific detail — institution, figure, or affected group — that gives the update its immediate relevance"
+  ).replace(/\.$/, "");
 }
 
 function buildThirtySecondContextFallback(
@@ -3408,33 +3443,33 @@ function buildWhyItMattersSignificance(
   financeRelated: boolean
 ): string {
   if (financeRelated && facts.topicTerms.includes("car finance") && facts.amounts.some((a) => /\bbillion|bn\b/i.test(a))) {
-    return "Large compensation estimates tied to car finance practices can affect bank reserves and how lenders price consumer credit.";
+    return "Large compensation estimates tied to car finance practices can affect bank reserves, lender pricing, and how investors judge consumer-credit risk across the sector.";
   }
   if (financeRelated && facts.hasWarning && facts.organizations.length > 0) {
-    return `The warning language involving ${facts.organizations[0]} suggests the issue may move from headlines into formal remediation or regulatory action.`;
+    return `The warning language involving ${facts.organizations[0]} suggests the issue may move from headlines into formal remediation, regulatory scrutiny, or higher legal costs.`;
   }
   if (financeRelated && /\bearnings|quarter|results|guidance\b/i.test(headline) && entity) {
-    return `${entity}'s reported figures can change how analysts assess its recent performance and near-term outlook.`;
+    return `${entity}'s reported figures can change how analysts assess recent performance, margin trends, and whether management guidance still looks credible.`;
   }
   if (financeRelated && ctx.themes.includes("rates")) {
-    return "Changes in rates and inflation expectations can flow through to borrowing costs, housing activity, and asset prices.";
+    return "Changes in rates and inflation expectations can flow through to mortgage demand, corporate borrowing costs, and the valuation of rate-sensitive stocks and bonds.";
   }
   if (financeRelated && ctx.themes.includes("merger") && entity) {
-    return `Deal progress or failure can reshape expectations for ${entity} and for rival firms in the same industry.`;
+    return `Deal progress or failure can reshape expectations for ${entity}, its rivals, and suppliers that depend on the combined company's spending and strategy.`;
   }
   if (financeRelated && facts.amounts.some((amount) => /\bbillion|bn|million|m\b/i.test(amount))) {
     const amount = facts.amounts.find((amount) => /\bbillion|bn|million|m\b/i.test(amount)) ?? facts.amounts[0];
-    return `The ${amount} figure cited in the reporting is the main reason the story carries financial weight.`;
+    return `The ${amount} figure cited in the reporting is material because it frames the payout, exposure, or budget impact that investors and policymakers will scrutinize next.`;
   }
   const civic = extractCivicAffectedParties(headline, excerpt);
   if (civic.length > 0) {
-    return `The development has the most immediate relevance for ${formatSubjectList(civic)}.`;
+    return `The development has the most immediate relevance for ${formatSubjectList(civic)}, especially if follow-up reporting confirms scope, timing, or official response.`;
   }
   if (facts.headlineTopic && !overlapsHeadline(facts.headlineTopic, headline)) {
-    return `The update matters because it adds a new layer of detail to ${facts.headlineTopic}.`;
+    return `The update matters because it adds a new layer of detail to ${facts.headlineTopic}, giving readers a clearer read on what changed and what still remains unresolved.`;
   }
   if (ctx.limited) {
-    return "The reporting describes a development whose broader effects depend on follow-up details not included in the excerpt.";
+    return "The reporting describes a development whose broader effects depend on follow-up details not included in the excerpt, so the significance may shift once fuller confirmation arrives.";
   }
   return "";
 }
@@ -3450,9 +3485,9 @@ function buildWhyItMattersFallback(
   const significance = buildWhyItMattersSignificance(facts, ctx, entity, headline, excerpt, financeRelated);
   if (significance) return significance;
   if (entity) {
-    return `${entity} and the stakeholders named in the reporting are the audience most likely to feel the immediate effects of this update.`;
+    return `${entity} and the stakeholders named in the reporting are the audience most likely to feel the immediate effects of this update, with broader consequences depending on what follow-up disclosures confirm.`;
   }
-  return "The people, institutions, or communities named in the reporting are the primary audience for this update.";
+  return "The people, institutions, or communities named in the reporting are the primary audience for this update, and the practical impact will become clearer once the next verified report arrives.";
 }
 
 export function buildWhyItMatters(
@@ -3478,12 +3513,12 @@ export function buildWhyItMatters(
     if (finalized && !overlapsHeadline(finalized, headline) && !isNearDuplicate(finalized, parts)) {
       parts.push(finalized);
     }
-    if (parts.length >= 1) break;
+    if (parts.length >= 2) break;
   }
 
   const significance = buildWhyItMattersSignificance(facts, ctx, entity, headline, excerpt, financeRelated);
   if (significance) {
-    const finalized = finalizeParagraphText(significance, 8);
+    const finalized = finalizeParagraphText(significance, 10);
     if (finalized && !isNearDuplicate(finalized, parts)) {
       parts.push(finalized);
     }
@@ -3493,22 +3528,18 @@ export function buildWhyItMatters(
     parts.push(
       finalizeParagraphText(
         buildWhyItMattersFallback(facts, ctx, entity, headline, excerpt, financeRelated),
-        8
+        10
       )
     );
   }
 
-  const paragraph = parts
-    .slice(0, 2)
-    .map((part) => finalizeParagraphText(part, 8))
-    .filter(Boolean)
-    .join(" ");
+  const paragraph = composeDetailParagraph(parts, 3, 22);
 
   return (
-    finalizeParagraphText(paragraph, 12) ||
+    paragraph ||
     finalizeParagraphText(
       buildWhyItMattersFallback(facts, ctx, entity, headline, excerpt, financeRelated),
-      8
+      10
     )
   );
 }
@@ -3523,67 +3554,252 @@ export function buildWhoIsAffected(
   financeRelated = isFinanceRelatedStory(headline, excerpt, ticker)
 ): string {
   void articleType;
-  void source;
   void publishedAt;
   const ctx = buildArticlePreviewContext(headline, excerpt, source, publishedAt);
   const entity = extractPrimaryEntity(headline, excerpt);
+  const facts = extractPreviewFacts(headline, excerpt);
+  const sentences: string[] = [];
 
   if (financeRelated && entity) {
     if (/\bearnings|stock|shares|guidance|quarter|results\b/i.test(`${headline} ${excerpt}`)) {
-      return `${entity}, its shareholders, and analysts covering the company are the most directly affected audience for this update.`;
+      sentences.push(
+        `${entity}, its shareholders, bondholders, and the analysts covering the stock are the most directly affected audience for this update.`
+      );
+      sentences.push(
+        "Competitors and suppliers in the same industry may also react if the reported numbers change expectations for margins, demand, or capital spending."
+      );
+    } else if (ctx.themes.includes("merger")) {
+      sentences.push(
+        `${entity}, employees at the companies involved, and rival firms in the same industry are among the groups most directly tied to the reported development.`
+      );
+      sentences.push(
+        "Customers and suppliers that depend on the combined business could also see pricing, contract, or service changes if the deal moves forward or collapses."
+      );
+    } else {
+      sentences.push(
+        `${entity} and the counterparties, regulators, or customers named in the reporting are the most directly affected parties in the near term.`
+      );
+      sentences.push(
+        "Investors holding related shares, ETFs, or sector funds may feel secondary effects if the story shifts sentiment across the group."
+      );
     }
-    return `${entity} and parties tied to the development described in the report are the most directly affected.`;
-  }
-
-  if (financeRelated && ctx.themes.includes("rates")) {
-    return "Borrowers, savers, and businesses sensitive to interest-rate changes may feel effects if the development shifts policy expectations.";
-  }
-
-  if (financeRelated && ctx.themes.includes("merger")) {
-    return "Employees, customers, and rival firms connected to the companies named in the report may be affected by deal progress or failure.";
+  } else if (financeRelated && ctx.themes.includes("rates")) {
+    sentences.push(
+      "Borrowers with floating-rate debt, mortgage applicants, and savers watching deposit yields are among the groups most sensitive to the development."
+    );
+    sentences.push(
+      "Banks, homebuilders, and other rate-sensitive businesses may also see effects if the story changes expectations for policy or inflation."
+    );
+  } else if (financeRelated && facts.organizations.length > 0) {
+    sentences.push(
+      `${formatSubjectList(facts.organizations.slice(0, 2))} are named directly in the reporting and therefore carry the most immediate operational or financial exposure.`
+    );
+    sentences.push(
+      "Market participants with holdings linked to those institutions, sectors, or regions may feel follow-on effects through prices and risk appetite."
+    );
   }
 
   const civic = extractCivicAffectedParties(headline, excerpt);
   if (civic.length > 0) {
-    return `Those most directly affected include ${formatSubjectList(civic)}.`;
+    sentences.push(
+      `Those most directly affected include ${formatSubjectList(civic)}, because the reporting describes consequences aimed at or experienced by those groups first.`
+    );
+    if (ctx.subjects.length > 0) {
+      sentences.push(
+        `Broader attention may also extend to ${formatSubjectList(ctx.subjects)} if follow-up reports show wider policy, legal, or economic spillover.`
+      );
+    }
   }
 
-  const rewritten = ctx.sentences
-    .slice(0, 2)
-    .map((sentence) => paraphraseExcerptSentence(sentence, "", headline))
-    .filter((sentence) => sentence && countWords(sentence) >= 8);
-
-  if (rewritten.length > 0) {
-    return rewritten.join(" ");
+  if (sentences.length === 0) {
+    for (const sentence of ctx.sentences.slice(0, 2)) {
+      const rewritten = paraphraseExcerptSentence(sentence, entity, headline);
+      const finalized = rewritten ? finalizeParagraphText(rewritten, 8) : "";
+      if (finalized && !overlapsHeadline(finalized, headline)) {
+        sentences.push(finalized);
+      }
+      if (sentences.length >= 2) break;
+    }
   }
 
-  return "The people, organizations, or communities named in the headline and excerpt are the primary audience for this update.";
+  if (sentences.length === 0) {
+    sentences.push(
+      entity
+        ? `${entity}, the stakeholders named alongside it, and readers following the same industry are the primary audience for this update.`
+        : "The people, organizations, or communities named in the reporting are the primary audience for this update."
+    );
+    sentences.push(
+      "Secondary effects may spread to adjacent businesses, local communities, or investors only if later reporting confirms broader impact."
+    );
+  }
+
+  return composeDetailParagraph(sentences, 3, 18);
 }
 
-export function buildBullCase(headline: string, excerpt: string, sentiment: Sentiment): string {
+export function buildBullCase(
+  headline: string,
+  excerpt: string,
+  sentiment: Sentiment,
+  entity = "",
+  source = "",
+  financeRelated = isFinanceRelatedStory(headline, excerpt)
+): string {
+  void source;
+  const ctx = buildArticlePreviewContext(headline, excerpt, source);
+  const facts = extractPreviewFacts(headline, excerpt);
+  const resolvedEntity = entity || extractPrimaryEntity(headline, excerpt);
   const text = combinedText(headline, excerpt).toLowerCase();
+  const sentences: string[] = [];
+
   if (sentiment === "negative") {
-    return "If conditions stabilize or the report proves less severe than feared, related assets could recover part of any initial selloff.";
+    sentences.push(
+      "If follow-up reporting shows the problem is contained, costs come in below feared levels, or management offers a credible remediation plan, the initial negative reaction could partially reverse."
+    );
+    if (resolvedEntity) {
+      sentences.push(
+        `${resolvedEntity} could regain investor confidence if the next filing, call, or regulator update reduces uncertainty around the headline risk.`
+      );
+    }
+  } else if (text.includes("beat") || text.includes("outperform") || text.includes("strong") || text.includes("growth")) {
+    sentences.push(
+      resolvedEntity
+        ? `Stronger-than-expected revenue, margins, or demand could support further gains in ${resolvedEntity} if the next disclosure confirms the trend rather than a one-quarter anomaly.`
+        : "Stronger-than-expected results or demand could support further gains if the next disclosure confirms the trend rather than a one-quarter anomaly."
+    );
+    sentences.push(
+      "Sector peers with similar exposure could also benefit if investors treat the report as evidence of broader strength."
+    );
+  } else if (ctx.themes.includes("merger") && resolvedEntity) {
+    sentences.push(
+      `If regulators approve the transaction and integration plans look manageable, ${resolvedEntity} could benefit from scale, synergies, or a higher strategic valuation.`
+    );
+    sentences.push(
+      "A smoother-than-expected path to closing could lift sentiment across suppliers and partners tied to the deal."
+    );
+  } else if (ctx.themes.includes("rates")) {
+    sentences.push(
+      "If inflation cools faster than markets expect or policy signals turn dovish, rate-sensitive assets could rebound as borrowing-cost fears ease."
+    );
+    sentences.push(
+      "Housing, growth stocks, and long-duration bonds would be among the areas most likely to respond if the story shifts expectations in a more supportive direction."
+    );
+  } else if (facts.amounts.length > 0) {
+    sentences.push(
+      `If the ${facts.amounts[0]} figure proves durable and supports stronger earnings, settlement clarity, or policy relief, sentiment toward the named institutions could improve.`
+    );
+    sentences.push(
+      "A constructive follow-up could reduce the discount investors were applying while the outcome remained uncertain."
+    );
+  } else {
+    sentences.push(
+      "If later disclosures validate the reporting and no major negative surprises emerge, related assets could see a relief rally or renewed investor interest."
+    );
+    if (financeRelated && resolvedEntity) {
+      sentences.push(
+        `Analysts covering ${resolvedEntity} might read that as evidence that near-term downside is more limited than the first headline implied.`
+      );
+    }
   }
-  if (text.includes("beat") || text.includes("growth") || text.includes("strong")) {
-    return "Stronger-than-expected results or demand could support further gains if follow-up data confirms the trend.";
-  }
-  return "If later updates reinforce the headline, sentiment in related assets could improve.";
+
+  return composeDetailParagraph(sentences, 2, 20);
 }
 
-export function buildBearCase(headline: string, excerpt: string, sentiment: Sentiment): string {
+export function buildBearCase(
+  headline: string,
+  excerpt: string,
+  sentiment: Sentiment,
+  entity = "",
+  source = "",
+  financeRelated = isFinanceRelatedStory(headline, excerpt)
+): string {
+  void source;
+  const ctx = buildArticlePreviewContext(headline, excerpt, source);
+  const facts = extractPreviewFacts(headline, excerpt);
+  const resolvedEntity = entity || extractPrimaryEntity(headline, excerpt);
   const text = combinedText(headline, excerpt).toLowerCase();
+  const sentences: string[] = [];
+
   if (sentiment === "positive") {
-    return "If follow-up reports show weaker data or guidance, the initial optimism may fade and prices could give back gains.";
+    sentences.push(
+      "If follow-up reports show weaker data, softer guidance, or higher costs than the headline suggested, the initial optimism may fade and prices could give back gains."
+    );
+    if (resolvedEntity) {
+      sentences.push(
+        `${resolvedEntity} could face renewed pressure if the next quarter fails to confirm the improvement investors are assuming from the first report.`
+      );
+    }
+  } else if (text.includes("miss") || text.includes("cut") || text.includes("warning") || facts.hasWarning) {
+    sentences.push(
+      "Weaker follow-through, downgraded outlooks, or escalated regulatory action could extend pressure on the stocks, sectors, or institutions named in the reporting."
+    );
+    if (facts.amounts.length > 0) {
+      sentences.push(
+        `A worse-than-expected outcome around the ${facts.amounts[0]} figure cited in the reporting would reinforce the bearish read rather than contain the damage.`
+      );
+    }
+  } else if (ctx.themes.includes("merger") && resolvedEntity) {
+    sentences.push(
+      `If regulators block the deal, financing costs rise, or integration risks look worse than expected, ${resolvedEntity} could trade lower on broken synergy assumptions.`
+    );
+    sentences.push(
+      "Employees and suppliers tied to the transaction could also face disruption if the process stalls or is repriced."
+    );
+  } else if (ctx.themes.includes("rates")) {
+    sentences.push(
+      "If inflation proves sticky or policy stays restrictive longer than markets hope, rate-sensitive assets could sell off and financial conditions could tighten further."
+    );
+    sentences.push(
+      "Borrowers and leveraged businesses would feel that through higher funding costs and slower demand."
+    );
+  } else {
+    sentences.push(
+      "If confirming data disappoints, legal or regulatory steps intensify, or management guidance turns cautious, risk appetite around related assets may weaken."
+    );
+    if (financeRelated && resolvedEntity) {
+      sentences.push(
+        `${resolvedEntity} could remain under pressure until investors get clearer evidence that the issue is bounded and fully disclosed.`
+      );
+    }
   }
-  if (text.includes("miss") || text.includes("cut") || text.includes("warning")) {
-    return "Weaker follow-through or downgraded outlooks could extend pressure on related stocks and sectors.";
-  }
-  return "If confirming data disappoints, risk appetite around related assets may weaken.";
+
+  return composeDetailParagraph(sentences, 2, 20);
 }
 
-export function buildNeutralView(): string {
-  return "Headlines can move markets before the full picture is clear. Treat early reports as one input and look for confirmation in official data or company statements.";
+export function buildNeutralView(
+  headline = "",
+  excerpt = "",
+  entity = "",
+  source = ""
+): string {
+  const ctx = headline && excerpt ? buildArticlePreviewContext(headline, excerpt, source) : null;
+  const resolvedEntity = entity || (headline && excerpt ? extractPrimaryEntity(headline, excerpt) : "");
+  const sentences = [
+    "Early headlines often move prices before timelines, legal outcomes, or full financial impact are clear, so the first reaction may overshoot what the evidence supports.",
+  ];
+
+  if (resolvedEntity) {
+    sentences.push(
+      `For ${resolvedEntity}, the balanced read is to separate what is confirmed in the reporting from what still depends on filings, management commentary, or regulator response.`
+    );
+  } else if (ctx?.limited) {
+    sentences.push(
+      "Because the excerpt leaves out key details, the fairest stance is to wait for the full source article or an official statement before treating the move as decisive."
+    );
+  } else if (ctx?.subjects.length) {
+    sentences.push(
+      `Readers should weigh the update alongside prior reporting on ${formatSubjectList(ctx.subjects.slice(0, 2))} rather than treating this single headline as the full story.`
+    );
+  } else {
+    sentences.push(
+      `Treat ${source || "the reporting"} as one input and look for corroboration before changing a long-term view.`
+    );
+  }
+
+  sentences.push(
+    "A neutral stance keeps room for both relief and disappointment until the next verified update arrives."
+  );
+
+  return composeDetailParagraph(sentences, 3, 24);
 }
 
 export function buildEducationalSummary(headline: string, excerpt: string, query: string): string {
@@ -3741,16 +3957,20 @@ export function enrichArticleCopy(brief: Brief): Brief {
   const analysisText = buildAnalysisText(brief);
   const articleType = inferArticleType(analysisText);
   const metadata = deriveArticleMetadata(brief);
-
-  return {
-    ...brief,
-    summary: buildFinBriefSummary(
+  const entity = extractPrimaryEntity(brief.headline, brief.excerpt) || brief.ticker;
+  const summary =
+    brief.summary?.trim() ||
+    buildFinBriefSummary(
       brief.headline,
       brief.excerpt,
       brief.source,
       brief.publishedAt,
       financeRelated
-    ),
+    );
+
+  return {
+    ...brief,
+    summary,
     thirtySecondVersion: buildThirtySecondVersion(
       brief.headline,
       brief.excerpt,
@@ -3776,6 +3996,23 @@ export function enrichArticleCopy(brief: Brief): Brief {
       brief.ticker,
       financeRelated
     ),
+    bullCase: buildBullCase(
+      brief.headline,
+      brief.excerpt,
+      metadata.sentiment,
+      entity,
+      brief.source,
+      financeRelated
+    ),
+    bearCase: buildBearCase(
+      brief.headline,
+      brief.excerpt,
+      metadata.sentiment,
+      entity,
+      brief.source,
+      financeRelated
+    ),
+    neutralView: buildNeutralView(brief.headline, brief.excerpt, entity, brief.source),
     sentiment: metadata.sentiment,
     sentimentConfidence: metadata.sentimentConfidence,
     marketImpact: metadata.marketImpact,
