@@ -458,9 +458,25 @@ function promotionalTextRatio(text: string): number {
   return promoCount / sentences.length;
 }
 
+/** Fix common punctuation artifacts in generated brief copy. */
+function fixBriefPunctuation(text: string): string {
+  return normalizeWhitespace(
+    text
+      .replace(/\?\./g, "?")
+      .replace(/!\./g, "!")
+      .replace(/\?\?+/g, "?")
+      .replace(/\.{2,}/g, ".")
+      .replace(/,\s*\./g, ".")
+      .replace(/\.;/g, ";")
+      .replace(/\s--\s/g, ", ")
+      .replace(/,\s*,+/g, ", ")
+      .replace(/([.!?])\s*([.!?])+/g, "$1")
+  );
+}
+
 /** Remove ellipsis, ticker debris, stray dashes, and promo phrasing from brief copy. */
 function polishBriefCopyText(text: string): string {
-  let value = normalizeWhitespace(text.replace(/^[\s•\-–—*]+/, ""));
+  let value = fixBriefPunctuation(normalizeWhitespace(text.replace(/^[\s•\-–—*]+/, "")));
   if (!value) return "";
 
   value = value
@@ -497,7 +513,7 @@ function polishBriefCopyText(text: string): string {
     }
   }
 
-  return isInvalidBriefFragment(value) ? "" : value;
+  return isInvalidBriefFragment(value) ? "" : fixBriefPunctuation(value);
 }
 
 function polishBriefSection(text: string, fallback = ""): string {
@@ -3764,30 +3780,497 @@ export function buildWhoIsAffected(
   );
 }
 
-export function buildBullCase(headline: string, excerpt: string, sentiment: Sentiment): string {
-  const text = combinedText(headline, excerpt).toLowerCase();
-  if (sentiment === "negative") {
-    return "If conditions stabilize or the report proves less severe than feared, related assets could recover part of any initial selloff.";
-  }
-  if (text.includes("beat") || text.includes("growth") || text.includes("strong")) {
-    return "Stronger-than-expected results or demand could support further gains if follow-up data confirms the trend.";
-  }
-  return "If later updates reinforce the headline, sentiment in related assets could improve.";
+function buildSecuritiesLegalBullCase(details: SecuritiesNoticeDetails): string {
+  const tickerNote = details.tickers.length > 0 ? ` (${details.tickers.join(", ")})` : "";
+  return composeAnalysisSection([
+    `If courts dismiss claims against ${details.company}${tickerNote} or any settlement proves smaller than investors fear, the legal overhang on the stock could fade.`,
+    `Many ${details.actionLabel} notices from firms like ${details.lawFirm} never advance to a certified class action, which would limit lasting damage to ${details.company}'s valuation.`,
+  ]);
 }
 
-export function buildBearCase(headline: string, excerpt: string, sentiment: Sentiment): string {
-  const text = combinedText(headline, excerpt).toLowerCase();
-  if (sentiment === "positive") {
-    return "If follow-up reports show weaker data or guidance, the initial optimism may fade and prices could give back gains.";
-  }
-  if (text.includes("miss") || text.includes("cut") || text.includes("warning")) {
-    return "Weaker follow-through or downgraded outlooks could extend pressure on related stocks and sectors.";
-  }
-  return "If confirming data disappoints, risk appetite around related assets may weaken.";
+function buildSecuritiesLegalBearCase(details: SecuritiesNoticeDetails): string {
+  const tickerNote = details.tickers.length > 0 ? ` (${details.tickers.join(", ")})` : "";
+  return composeAnalysisSection([
+    `If plaintiffs build a viable case against ${details.company}${tickerNote}, settlement costs, legal fees, or management distraction could weigh on the share price.`,
+    `A certified class action tied to the conduct described in the ${details.lawFirm} notice could force ${details.company} to reserve cash or revise prior disclosures.`,
+  ]);
 }
 
-export function buildNeutralView(): string {
-  return "Headlines can move markets before the full picture is clear. Treat early reports as one input and look for confirmation in official data or company statements.";
+function buildSecuritiesLegalNeutralView(details: SecuritiesNoticeDetails, source: string): string {
+  return composeAnalysisSection([
+    `${details.lawFirm}'s ${details.actionLabel} about ${details.company} is legal marketing, not a court ruling or confirmed settlement.`,
+    `Lead-plaintiff deadlines and claim scope remain unverified until checked against the original ${source || "PRNewswire"} release and any subsequent court filings.`,
+  ]);
+}
+
+interface StoryAnalysisContext {
+  headline: string;
+  excerpt: string;
+  source: string;
+  entity: string;
+  facts: PreviewFacts;
+  ctx: ArticlePreviewContext;
+  financeRelated: boolean;
+  articleType: ReturnType<typeof inferArticleType>;
+  storyText: string;
+  lower: string;
+  parties: string[];
+  primaryParty: string;
+  amount?: string;
+  isRumor: boolean;
+  isConfirmed: boolean;
+}
+
+function buildStoryAnalysisContext(
+  headline: string,
+  excerpt: string,
+  source = "",
+  publishedAt?: string,
+  ticker = "",
+  keyAffectedAssets: string[] = [],
+  articleType: ReturnType<typeof inferArticleType> = "company"
+): StoryAnalysisContext {
+  const ctx = buildArticlePreviewContext(headline, excerpt, source, publishedAt);
+  const entity = extractPrimaryEntity(headline, excerpt);
+  const facts = extractPreviewFacts(headline, excerpt);
+  const financeRelated = isFinanceRelatedStory(headline, excerpt, ticker, keyAffectedAssets);
+  const storyText = combinedText(headline, excerpt);
+  const lower = prepareExcerptForSummary(storyText).toLowerCase();
+  const parties: string[] = [];
+  const addParty = (name: string) => {
+    const trimmed = normalizeWhitespace(name);
+    if (!trimmed || parties.some((party) => party.toLowerCase() === trimmed.toLowerCase())) return;
+    parties.push(trimmed);
+  };
+  if (entity) addParty(entity);
+  for (const org of facts.organizations) addParty(org);
+  for (const subject of ctx.subjects.slice(0, 2)) addParty(subject);
+
+  const primaryParty =
+    parties[0] ||
+    facts.organizations[0] ||
+    facts.headlineTopic ||
+    headlineCore(headline);
+  const amount =
+    facts.amounts.find((item) => /\bbillion|bn|million|m\b|crore|\bcr\b|£|\$|€|rs\.?\s*\d/i.test(item)) ??
+    facts.amounts[0];
+  const isRumor =
+    /\bspeculation|rumou?r|reportedly|could pursue|may pursue|in talks|exploring|mulling|sources said|people familiar|unnamed\b/i.test(
+      lower
+    );
+  const isConfirmed = /\bannounced|confirmed|signed|approved|completed|closed|finalized\b/i.test(lower);
+
+  return {
+    headline,
+    excerpt,
+    source,
+    entity,
+    facts,
+    ctx,
+    financeRelated,
+    articleType,
+    storyText,
+    lower,
+    parties,
+    primaryParty,
+    amount,
+    isRumor,
+    isConfirmed,
+  };
+}
+
+function composeAnalysisSection(sentences: string[]): string {
+  const cleaned = sentences
+    .map((sentence) => polishBriefCopyText(ensurePeriod(sentence)))
+    .filter(Boolean);
+  if (cleaned.length === 0) return "";
+  return polishBriefSection(cleaned.slice(0, 3).join(" "));
+}
+
+function buildAnalysisResolutionWatcher(analysis: StoryAnalysisContext): string {
+  const { ctx, entity, parties, facts, financeRelated, source } = analysis;
+  const named = parties[0] || entity || "the companies named";
+
+  if (ctx.themes.includes("merger")) {
+    return `a joint announcement, merger filing, or denial from ${named}`;
+  }
+  if (ctx.themes.includes("earnings") && entity) {
+    return `${entity}'s next earnings release, filing, or management call`;
+  }
+  if (facts.hasWarning) {
+    const warning = facts.quotedPhrases[0] ? `"${facts.quotedPhrases[0]}" ` : "";
+    return `formal regulatory or lender statements confirming the ${warning}warning language`;
+  }
+  if (financeRelated && facts.amounts.length > 0) {
+    return `an official disclosure validating the ${facts.amounts[0]} figure`;
+  }
+  if (entity) {
+    return `a verified statement or filing from ${entity}`;
+  }
+  return `follow-up reporting from ${source || ctx.source || "the publisher"}`;
+}
+
+export function buildBullCase(
+  headline: string,
+  excerpt: string,
+  sentiment: Sentiment,
+  source = "",
+  publishedAt?: string,
+  ticker = "",
+  articleType: ReturnType<typeof inferArticleType> = "company",
+  financeRelated = isFinanceRelatedStory(headline, excerpt, ticker),
+  keyAffectedAssets: string[] = []
+): string {
+  void sentiment;
+  const analysis = buildStoryAnalysisContext(
+    headline,
+    excerpt,
+    source,
+    publishedAt,
+    ticker,
+    keyAffectedAssets,
+    articleType
+  );
+  const {
+    ctx,
+    entity,
+    facts,
+    parties,
+    primaryParty,
+    amount,
+    isRumor,
+    financeRelated: finance,
+    lower,
+  } = analysis;
+  const partyLabel =
+    parties.length >= 2 ? formatSubjectList(parties.slice(0, 2)) : primaryParty;
+  const sentences: string[] = [];
+
+  if (ctx.themes.includes("merger")) {
+    if (isRumor) {
+      sentences.push(
+        `If ${partyLabel} reach a binding agreement, ${entity || parties[0] || "the target company"} could benefit from strategic scale, cross-selling, or cost savings that improve long-term earnings assumptions.`
+      );
+      sentences.push(
+        `A successful transaction could also lift ${entity || parties[0] || "the named company"}'s valuation if investors price in synergies rather than integration risk.`
+      );
+    } else {
+      sentences.push(
+        `If the ${facts.topicTerms.includes("corporate deal") ? "corporate deal" : "transaction"} involving ${partyLabel} closes on the reported terms, shareholders could capture premium pricing or improved competitive positioning.`
+      );
+      sentences.push(
+        `${entity || parties[0] || "The acquirer"} may also gain revenue diversification if the combination expands into adjacent markets described in the reporting.`
+      );
+    }
+  } else if (ctx.themes.includes("earnings") && entity) {
+    sentences.push(
+      `If ${entity}'s reported ${facts.topicTerms.includes("earnings") ? "earnings" : "results"} hold up in the full filing, analysts may raise estimates or maintain constructive guidance assumptions.`
+    );
+    if (/\bbeat|growth|strong|outperform|record\b/.test(lower)) {
+      sentences.push(
+        `Stronger-than-expected revenue or margin trends at ${entity} could support further gains if the next call reinforces demand visibility.`
+      );
+    } else if (amount) {
+      sentences.push(
+        `Confirmation that ${entity} can sustain the ${amount} figures cited in the reporting would reduce near-term uncertainty for holders of the stock.`
+      );
+    }
+  } else if (ctx.themes.includes("rates")) {
+    sentences.push(
+      `If the ${source || ctx.source || "reported"} macro development pushes inflation or rate expectations lower than markets currently assume, rate-sensitive assets could rerate higher.`
+    );
+    sentences.push(
+      `Borrowers and equity investors exposed to duration risk could benefit if bond yields fall in response to the policy signals described in the story.`
+    );
+  } else if (facts.topicTerms.includes("car finance") && amount) {
+    sentences.push(
+      `If lender provisions tied to the ${amount} car-finance exposure prove smaller than feared, banks named in the reporting could release reserves and improve return-on-equity outlooks.`
+    );
+    sentences.push(
+      `A narrower-than-expected remediation scope would also reduce compensation uncertainty for the institutions involved.`
+    );
+  } else if (/\b(property|office space|sq ft|sq\. ft|reit|real estate|crore|\bcr\b|capital expenditure|capex)\b/i.test(lower)) {
+    sentences.push(
+      `If ${primaryParty} delivers the planned project on budget${amount ? `, including the ${amount} investment cited` : ""}, rental income and asset values could rise as occupancy improves.`
+    );
+    sentences.push(
+      `Successful leasing progress would validate management's expansion strategy and could support higher NAV or earnings forecasts for ${primaryParty}.`
+    );
+  } else if (facts.hasWarning && entity) {
+    sentences.push(
+      `If regulators or ${entity} resolve the "${facts.quotedPhrases[0] || "warning"}" issue with limited fines or remediation, the overhang on the stock could fade faster than investors expect.`
+    );
+    sentences.push(
+      `A contained outcome would allow ${entity} to refocus investors on operating performance rather than legal or compensation risk.`
+    );
+  } else if (finance && entity && amount) {
+    sentences.push(
+      `If ${entity} executes on the plan tied to the ${amount} figure in the reporting, investors could reap upside from stronger cash flow or asset growth than the market currently prices in.`
+    );
+    sentences.push(
+      `Confirmation of the ${amount} exposure in an official filing would give ${entity} shareholders a clearer basis for valuation.`
+    );
+  } else if (finance && entity) {
+    sentences.push(
+      `If follow-up disclosures from ${entity} reinforce the positive details in ${source || ctx.source || "the reporting"}, holders of the stock could see estimate upgrades or multiple expansion.`
+    );
+    sentences.push(
+      `${entity}'s next verified update would matter most for investors weighing whether the headline reflects durable business momentum.`
+    );
+  } else if (!finance) {
+    const civic = extractCivicAffectedParties(headline, excerpt);
+    if (civic.length > 0) {
+      sentences.push(
+        `If officials deliver on the update described for ${formatSubjectList(civic)}, the groups named could see tangible service, safety, or policy improvements.`
+      );
+    } else if (facts.headlineTopic) {
+      sentences.push(
+        `If the developments around ${facts.headlineTopic} proceed as described in ${source || ctx.source || "the reporting"}, the communities involved could benefit from clearer timelines and follow-through.`
+      );
+    }
+  }
+
+  if (sentences.length === 0 && entity) {
+    sentences.push(
+      `If ${entity} confirms the favorable details in ${source || ctx.source || "the reporting"}, investors tracking the name could reassess the story as net positive for the stock.`
+    );
+  }
+
+  if (sentences.length === 0) {
+    sentences.push(
+      `If the developments described for ${primaryParty} play out as reported, the named parties could see upside relative to current expectations.`
+    );
+  }
+
+  return composeAnalysisSection(sentences);
+}
+
+export function buildBearCase(
+  headline: string,
+  excerpt: string,
+  sentiment: Sentiment,
+  source = "",
+  publishedAt?: string,
+  ticker = "",
+  articleType: ReturnType<typeof inferArticleType> = "company",
+  financeRelated = isFinanceRelatedStory(headline, excerpt, ticker),
+  keyAffectedAssets: string[] = []
+): string {
+  void sentiment;
+  void articleType;
+  const analysis = buildStoryAnalysisContext(
+    headline,
+    excerpt,
+    source,
+    publishedAt,
+    ticker,
+    keyAffectedAssets,
+    articleType
+  );
+  const {
+    ctx,
+    entity,
+    facts,
+    parties,
+    primaryParty,
+    amount,
+    isRumor,
+    financeRelated: finance,
+    lower,
+  } = analysis;
+  const partyLabel =
+    parties.length >= 2 ? formatSubjectList(parties.slice(0, 2)) : primaryParty;
+  const sentences: string[] = [];
+
+  if (ctx.themes.includes("merger")) {
+    if (isRumor) {
+      sentences.push(
+        `If talks between ${partyLabel} collapse, ${entity || parties[0] || "the target"} could face uncertainty over strategy, leadership focus, and near-term share-price volatility.`
+      );
+      sentences.push(
+        `Even renewed speculation can distract management at ${entity || parties[0] || "the companies involved"} and unsettle customers or regulators before any deal is real.`
+      );
+    } else {
+      sentences.push(
+        `If regulators block the transaction involving ${partyLabel}, breakup fees, lost synergies, or repricing of ${entity || parties[0] || "the target"} could hurt shareholders.`
+      );
+      sentences.push(
+        `Integration costs, financing conditions, or cultural mismatch could also erode the benefits investors are assuming from the deal.`
+      );
+    }
+  } else if (ctx.themes.includes("earnings") && entity) {
+    sentences.push(
+      `If ${entity}'s full filing reveals weaker margins, softer guidance, or demand shortfalls, the initial reaction could reverse quickly.`
+    );
+    if (/\bmiss|cut|warning|decline|weak\b/.test(lower)) {
+      sentences.push(
+        `Analysts covering ${entity} may downgrade estimates if the reported figures confirm deterioration across key business lines.`
+      );
+    } else {
+      sentences.push(
+        `Any guidance cut from ${entity} on the upcoming call would be the clearest bearish trigger for holders of the stock.`
+      );
+    }
+  } else if (ctx.themes.includes("rates")) {
+    sentences.push(
+      `If the ${source || ctx.source || "reported"} development keeps inflation or rate expectations higher for longer, borrowing costs and asset valuations could come under renewed pressure.`
+    );
+    sentences.push(
+      `Rate-sensitive sectors could sell off if markets interpret the story as reducing the odds of near-term policy easing.`
+    );
+  } else if (facts.topicTerms.includes("car finance") && amount) {
+    sentences.push(
+      `If the ${amount} car-finance exposure proves larger or triggers tougher remediation, lenders named in the reporting may need heavier provisions and lower payouts to shareholders.`
+    );
+    sentences.push(
+      `Escalating regulatory action would raise funding and compliance costs across the sector.`
+    );
+  } else if (/\b(property|office space|sq ft|sq\. ft|reit|real estate|crore|\bcr\b|capital expenditure|capex)\b/i.test(lower)) {
+    sentences.push(
+      `If ${primaryParty} faces cost overruns, slower leasing, or weaker demand in the market described, returns on${amount ? ` the ${amount} project` : " the project"} could fall short of plan.`
+    );
+    sentences.push(
+      `Delays in delivering the planned space would push out rental income and could pressure ${primaryParty}'s balance sheet or dividend capacity.`
+    );
+  } else if (facts.hasWarning && entity) {
+    sentences.push(
+      `If regulators escalate action after the "${facts.quotedPhrases[0] || "warning"}" language involving ${entity}, compensation, fines, or business restrictions could weigh on earnings.`
+    );
+    sentences.push(
+      `${entity} shareholders could face dilution or lower returns if remediation costs exceed current assumptions.`
+    );
+  } else if (ctx.themes.includes("regulation") && entity) {
+    sentences.push(
+      `If enforcement against ${entity} intensifies, legal costs, product limits, or reputational damage could reduce earnings visibility.`
+    );
+    sentences.push(
+      `A formal sanction or lawsuit success against ${entity} would be the main downside scenario for investors.`
+    );
+  } else if (finance && entity && amount) {
+    sentences.push(
+      `If ${entity} cannot deliver on the ${amount} plan described in the reporting, investors may cut forecasts and compress the valuation multiple.`
+    );
+    sentences.push(
+      `Higher-than-expected costs or funding needs tied to the ${amount} figure would be an immediate bearish catalyst for ${entity}.`
+    );
+  } else if (finance && entity) {
+    sentences.push(
+      `If follow-up reports contradict the optimistic read on ${entity}, the stock could give back gains as investors reassess risk.`
+    );
+    sentences.push(
+      `Financing strain, competitive pressure, or weaker demand would be the most direct channels for downside at ${entity}.`
+    );
+  } else if (!finance) {
+    const civic = extractCivicAffectedParties(headline, excerpt);
+    if (civic.length > 0) {
+      sentences.push(
+        `If implementation stalls, ${formatSubjectList(civic)} could face continued disruption or unmet expectations from the update described.`
+      );
+    }
+  }
+
+  if (sentences.length === 0 && entity) {
+    sentences.push(
+      `If the downside scenario materializes for ${entity}, investors could reassess growth, margins, or legal exposure tied to the reporting.`
+    );
+  }
+
+  if (sentences.length === 0) {
+    sentences.push(
+      `If the risks embedded in the ${primaryParty} story intensify, the named parties could underperform current expectations.`
+    );
+  }
+
+  return composeAnalysisSection(sentences);
+}
+
+export function buildNeutralView(
+  headline: string,
+  excerpt: string,
+  source = "",
+  publishedAt?: string,
+  ticker = "",
+  articleType: ReturnType<typeof inferArticleType> = "company",
+  financeRelated = isFinanceRelatedStory(headline, excerpt, ticker),
+  keyAffectedAssets: string[] = []
+): string {
+  void articleType;
+  const analysis = buildStoryAnalysisContext(
+    headline,
+    excerpt,
+    source,
+    publishedAt,
+    ticker,
+    keyAffectedAssets,
+    articleType
+  );
+  const {
+    ctx,
+    entity,
+    facts,
+    parties,
+    primaryParty,
+    amount,
+    isRumor,
+    isConfirmed,
+    financeRelated: finance,
+    source: storySource,
+  } = analysis;
+  const partyLabel =
+    parties.length >= 2 ? formatSubjectList(parties.slice(0, 2)) : primaryParty;
+  const resolution = buildAnalysisResolutionWatcher(analysis);
+  const sentences: string[] = [];
+
+  if (isRumor && !isConfirmed) {
+    sentences.push(
+      `No party in ${partyLabel} has publicly confirmed the terms described in ${storySource || ctx.source || "the reporting"}.`
+    );
+    if (ctx.themes.includes("merger")) {
+      sentences.push(
+        `Deal size, financing structure, breakup terms, and regulatory path remain unverified while the story is still sourced to speculation or unnamed reports.`
+      );
+    } else if (amount) {
+      sentences.push(
+        `The ${amount} figure cited has not been independently validated outside the initial ${storySource || ctx.source || "report"}.`
+      );
+    } else {
+      sentences.push(
+        `Key details in the ${storySource || ctx.source || "report"} are still unconfirmed by primary-source statements or filings.`
+      );
+    }
+  } else if (ctx.themes.includes("earnings") && entity) {
+    sentences.push(
+      `${entity}'s headline figures are not yet fully reconciled with segment detail, guidance, or management commentary from the complete filing.`
+    );
+    sentences.push(
+      `Analysts may wait for the full release and call before treating the reported numbers as definitive.`
+    );
+  } else if (facts.hasWarning && entity) {
+    sentences.push(
+      `The "${facts.quotedPhrases[0] || "warning"}" language involving ${entity} is reported, but the scope of remediation, fines, or customer impact is still unclear.`
+    );
+    sentences.push(
+      `Regulators and ${entity} have not yet laid out a final timeline or cost estimate in the available reporting.`
+    );
+  } else if (finance && amount) {
+    sentences.push(
+      `The ${amount} figure anchors the story, but the reporting still leaves open how much of that exposure is confirmed, funded, or already priced in.`
+    );
+    sentences.push(
+      `Investors should treat ${storySource || ctx.source || "the initial report"} as provisional until numbers appear in an official disclosure.`
+    );
+  } else if (!finance) {
+    sentences.push(
+      `The ${storySource || ctx.source || "report"} describes an update affecting ${primaryParty}, but procedural details and timing are still incomplete in the available text.`
+    );
+  } else {
+    sentences.push(
+      `The ${storySource || ctx.source || "report"} on ${primaryParty} leaves important details unresolved in the excerpt available here.`
+    );
+  }
+
+  sentences.push(`A clearer read would come from ${resolution}.`);
+  return composeAnalysisSection(sentences);
 }
 
 export function buildEducationalSummary(headline: string, excerpt: string, query: string): string {
@@ -3933,6 +4416,9 @@ export function enrichArticleCopy(brief: Brief): Brief {
       thirtySecondVersion: buildSecuritiesLegalThirtySecond(details),
       whatHappened: buildSecuritiesLegalExcerpt(details, brief.source),
       whyItMatters: buildSecuritiesLegalWhyItMatters(details),
+      bullCase: buildSecuritiesLegalBullCase(details),
+      bearCase: buildSecuritiesLegalBearCase(details),
+      neutralView: buildSecuritiesLegalNeutralView(details, brief.source),
     };
   }
 
@@ -3981,6 +4467,38 @@ export function enrichArticleCopy(brief: Brief): Brief {
       brief.publishedAt,
       brief.ticker,
       financeRelated
+    ),
+    bullCase: buildBullCase(
+      brief.headline,
+      brief.excerpt,
+      metadata.sentiment,
+      brief.source,
+      brief.publishedAt,
+      brief.ticker,
+      articleType,
+      financeRelated,
+      metadata.keyAffectedAssets
+    ),
+    bearCase: buildBearCase(
+      brief.headline,
+      brief.excerpt,
+      metadata.sentiment,
+      brief.source,
+      brief.publishedAt,
+      brief.ticker,
+      articleType,
+      financeRelated,
+      metadata.keyAffectedAssets
+    ),
+    neutralView: buildNeutralView(
+      brief.headline,
+      brief.excerpt,
+      brief.source,
+      brief.publishedAt,
+      brief.ticker,
+      articleType,
+      financeRelated,
+      metadata.keyAffectedAssets
     ),
     sentiment: metadata.sentiment,
     sentimentConfidence: metadata.sentimentConfidence,

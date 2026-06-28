@@ -167,9 +167,9 @@ export function normalizeProviderArticles(input: {
         buildWhoIsAffected(article.headline, excerpt, type, article.source, article.publishedAt),
       ],
       keyTerms,
-      bullCase: buildBullCase(article.headline, excerpt, metadata.sentiment),
-      bearCase: buildBearCase(article.headline, excerpt, metadata.sentiment),
-      neutralView: buildNeutralView(),
+      bullCase: buildBullCase(article.headline, excerpt, metadata.sentiment, article.source, article.publishedAt),
+      bearCase: buildBearCase(article.headline, excerpt, metadata.sentiment, article.source, article.publishedAt),
+      neutralView: buildNeutralView(article.headline, excerpt, article.source, article.publishedAt),
       risks: [
         "Headline-driven moves can reverse quickly",
         "Provider descriptions may omit key context",
