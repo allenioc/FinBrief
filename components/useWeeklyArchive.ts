@@ -1,12 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { enrichBrief } from "@/lib/article-analysis";
-import {
-  EXPLANATION_COPY_VERSION,
-  isTrustedExplanationVersion,
-  migrateArticleBriefExplanationCache,
-} from "@/lib/explanation-cache";
 import { formatWeekLabel, weekKeyFromDate, type WeeklyArchivePayload } from "@/lib/weekly-archive";
 import type { Brief } from "@/lib/types";
 
@@ -17,15 +11,9 @@ function readLocalWeekCache(weekKey: string): WeeklyArchivePayload | null {
   try {
     const raw = window.localStorage.getItem(`${WEEKLY_CACHE_PREFIX}::${weekKey}`);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as WeeklyArchivePayload & { explanationVersion?: number };
-    if (parsed.weekKey !== weekKey) return null;
-    if (!isTrustedExplanationVersion(parsed.explanationVersion)) {
-      window.localStorage.removeItem(`${WEEKLY_CACHE_PREFIX}::${weekKey}`);
-      return null;
-    }
-    return parsed;
+    const parsed = JSON.parse(raw) as WeeklyArchivePayload;
+    return parsed.weekKey === weekKey ? parsed : null;
   } catch {
-    window.localStorage.removeItem(`${WEEKLY_CACHE_PREFIX}::${weekKey}`);
     return null;
   }
 }
@@ -33,10 +21,7 @@ function readLocalWeekCache(weekKey: string): WeeklyArchivePayload | null {
 function writeLocalWeekCache(payload: WeeklyArchivePayload): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
-      `${WEEKLY_CACHE_PREFIX}::${payload.weekKey}`,
-      JSON.stringify({ ...payload, explanationVersion: EXPLANATION_COPY_VERSION })
-    );
+    window.localStorage.setItem(`${WEEKLY_CACHE_PREFIX}::${payload.weekKey}`, JSON.stringify(payload));
   } catch {
     // Storage may be unavailable in private mode.
   }
@@ -68,7 +53,6 @@ export function useWeeklyArchive(enabled: boolean = true) {
     const load = async () => {
       setLoading(true);
       setError(null);
-      migrateArticleBriefExplanationCache();
       const localCache = readLocalWeekCache(weekKey);
 
       try {
@@ -111,8 +95,7 @@ export function useWeeklyArchive(enabled: boolean = true) {
   }, [enabled]);
 
   const briefs = useMemo<Brief[]>(
-    () =>
-      archive?.days.flatMap((day) => day.stories.map((story) => enrichBrief(story))) ?? [],
+    () => archive?.days.flatMap((day) => day.stories) ?? [],
     [archive]
   );
 

@@ -99,8 +99,6 @@ export interface Brief {
   dataSnapshot: DataSnapshot;
   recommendedNext: RecommendedItem[];
   sourceLinks: SourceLink[];
-  /** Set when Article Brief explanation copy is regenerated; used to ignore stale saved summaries. */
-  explanationVersion?: number;
 }
 
 export type WatchlistItemType = "stock" | "etf" | "index" | "sector" | "topic";

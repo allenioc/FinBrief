@@ -247,12 +247,8 @@ function isAdminRequest(request: NextRequest): { authorized: boolean; note?: str
   return { authorized: provided === secret };
 }
 
-function hydrateCachedBrief(brief: Brief): Brief {
-  return enrichBrief(brief);
-}
-
 function enrichPayloadBriefs(payload: CachedPayload): CachedPayload {
-  const briefs = payload.briefs.map(hydrateCachedBrief);
+  const briefs = payload.briefs.map(enrichBrief);
   const syncFromBrief = <
     T extends {
       imageUrl?: string;
@@ -482,7 +478,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         found: true,
         source: `index:${indexed.tier}`,
-        article: hydrateCachedBrief(indexed.value),
+        article: enrichBrief(indexed.value),
       });
     }
     const broadScope = "broad-business-finance";
@@ -493,7 +489,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
           found: true,
           source: `edition:${record.tier}`,
-          article: hydrateCachedBrief(match),
+          article: enrichBrief(match),
         });
       }
     }
@@ -503,7 +499,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         found: true,
         source: `lastgood:${lastGood.tier}`,
-        article: hydrateCachedBrief(staleMatch),
+        article: enrichBrief(staleMatch),
       });
     }
     return NextResponse.json({ found: false }, { status: 404 });

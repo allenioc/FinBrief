@@ -240,14 +240,6 @@ export type WeeklyStorageDiagnostics = {
   rollingEditionArticles: number;
   rollingEditionReadTier: CacheTier | null;
   dayBuckets: WeeklyDayBucketDiagnostics[];
-  weekArchiveReady: {
-    weekStartsOnSunday: true;
-    today: string;
-    eligibleDatesThisWeek: string[];
-    savedDatesThisWeek: string[];
-    priorWeekBucketsExcluded: true;
-    appendMode: "dated-buckets-merge-dedupe";
-  };
 };
 
 /** Inspect weekly cache keys/tiers for ops debugging (no secrets, no provider calls). */
@@ -281,11 +273,6 @@ export async function diagnoseWeeklyStorage(reference: Date = new Date()): Promi
   }
 
   const durable = await isDurableCacheAvailable();
-  const savedDatesThisWeek = dayBuckets
-    .filter((bucket) => bucket.weeklyDayArticles > 0 || bucket.editionByDateArticles > 0)
-    .map((bucket) => bucket.editionDate);
-  const eligibleDatesThisWeek = currentWeekDateKeys(reference).filter((date) => date <= today);
-
   return {
     cacheBackend: cacheBackendDescription(),
     durableCacheConfigured: durable,
@@ -304,13 +291,5 @@ export async function diagnoseWeeklyStorage(reference: Date = new Date()): Promi
     rollingEditionArticles: rollingHit?.value.payload.briefs.length ?? 0,
     rollingEditionReadTier: rollingHit?.tier ?? null,
     dayBuckets,
-    weekArchiveReady: {
-      weekStartsOnSunday: true,
-      today,
-      eligibleDatesThisWeek,
-      savedDatesThisWeek,
-      priorWeekBucketsExcluded: true,
-      appendMode: "dated-buckets-merge-dedupe",
-    },
   };
 }

@@ -394,90 +394,10 @@ function isNearDuplicate(candidate: string, existing: string[]): boolean {
 }
 
 function cleanBullet(text: string, max = 140): string {
-  let value = polishBriefCopyText(text);
-  if (!value) return "";
-  if (value.length <= max) return value.endsWith(".") ? value.slice(0, -1) : value;
+  let value = normalizeWhitespace(text.replace(/\.{3,}/g, "").replace(/\.\.\.$/, ""));
+  if (value.length <= max) return value.endsWith(".") ? value : `${value}.`;
   value = value.slice(0, max).replace(/\s+\S*$/, "").trim();
-  return value.endsWith(".") ? value.slice(0, -1) : value;
-}
-
-const PROMOTIONAL_BRIEF_PATTERNS = [
-  /\bfind winning stocks\b/i,
-  /\bjoin\s+\d[\d,.]*\s*million investors\b/i,
-  /\bfree newsletter\b/i,
-  /\bclick here\b/i,
-  /\bsign up(?:\s+(?:now|today|free))?\b/i,
-  /\bsimply wall st\b/i,
-  /\bmotley fool\b/i,
-];
-
-function isPromotionalBriefCopy(text: string): boolean {
-  return PROMOTIONAL_BRIEF_PATTERNS.some((pattern) => pattern.test(text));
-}
-
-/** Remove ellipsis, ticker debris, stray dashes, and meta phrasing from brief copy. */
-function polishBriefCopyText(text: string): string {
-  let value = normalizeWhitespace(text.replace(/^[\s•\-–—*]+/, ""));
-  if (!value) return "";
-
-  value = value
-    .replace(/\.\.\./g, "")
-    .replace(/…/g, "")
-    .replace(/\b(?:NASDAQ|NYSE|AMEX|NasdaqGS|NyseGs|Nyse|Nasdaq):\s*[A-Z]{1,5}\b\.?\s*/gi, "")
-    .replace(/\b[A-Z]{1,5}\.(?:NASDAQ|NYSE|AMEX)\b/gi, "")
-    .replace(/\(\s*(?:NASDAQ|NYSE|AMEX|NasdaqGS|NyseGs|Nasdaq|Nyse):\s*[^)]+\)/gi, "")
-    .replace(/\s+[-–—]\s*$/g, "")
-    .replace(/\.\s*[-–—]\s*$/g, ".")
-    .replace(/\b(in|from)\s+the\s+preview\b/gi, "in the reporting")
-    .replace(/\bthe\s+preview\b/gi, "the reporting")
-    .replace(/\bthis\s+preview\b/gi, "this report")
-    .replace(/\bpreview\s+excerpt\b/gi, "reported details")
-    .replace(/\bavailable in this brief\b/gi, "in the linked report")
-    .replace(/\bthe short preview\b/gi, "the reported details")
-    .replace(/\bavailable preview text\b/gi, "the reported details");
-
-  if (isPromotionalBriefCopy(value) || isSummaryMetaCommentary(value)) return "";
-
-  if (!/[.!?]$/.test(value)) {
-    const lastSentenceEnd = Math.max(value.lastIndexOf(". "), value.lastIndexOf("! "), value.lastIndexOf("? "));
-    if (lastSentenceEnd > 24) {
-      value = value.slice(0, lastSentenceEnd + 1);
-    } else {
-      const words = value.split(/\s+/);
-      if (words.length > 1 && words[words.length - 1].length <= 2) {
-        value = ensurePeriod(words.slice(0, -1).join(" "));
-      } else {
-        value = ensurePeriod(value);
-      }
-    }
-  }
-
-  return value;
-}
-
-function polishBriefSection(text: string): string {
-  const cleaned = polishBriefCopyText(text);
-  return cleaned || "";
-}
-
-function polishBriefSummary(text: string): string {
-  return text
-    .split(/\n\n+/)
-    .map((paragraph) => polishBriefSection(paragraph))
-    .filter(Boolean)
-    .join("\n\n");
-}
-
-function polishThirtySecondVersion(text: string): string {
-  const bullets = text
-    .split("\n")
-    .map((line) => line.replace(/^[\s•\-*]+/, "").trim())
-    .map((bullet) => polishBriefCopyText(bullet))
-    .filter(Boolean);
-  while (bullets.length < 3) {
-    bullets.push("Follow-up reporting will clarify timing, scope, and official response");
-  }
-  return bullets.slice(0, 3).map((bullet) => `• ${bullet}`).join("\n");
+  return value.endsWith(".") ? value : `${value}.`;
 }
 
 function formatSubjectList(subjects: string[]): string {
@@ -1011,10 +931,7 @@ function stripSummaryDateline(text: string): string {
 
 function stripExchangeTickers(text: string): string {
   return normalizeWhitespace(
-    text
-      .replace(/\((?:NASDAQ|NYSE|Nasdaq|Nyse|AMEX|Amex|NasdaqGS|NyseGs):\s*[^)]+\)/gi, "")
-      .replace(/\b(?:NASDAQ|NYSE|AMEX|NasdaqGS|NyseGs|Nyse|Nasdaq):\s*[A-Z]{1,5}\b\.?\s*/gi, "")
-      .replace(/\b[A-Z]{1,5}\.(?:NASDAQ|NYSE|AMEX)\b/gi, "")
+    text.replace(/\((?:NASDAQ|NYSE|Nasdaq|Nyse|AMEX|Amex):\s*[^)]+\)/gi, "")
   );
 }
 
@@ -1045,8 +962,7 @@ function prepareExcerptForSummary(text: string): string {
   cleaned = stripUrls(cleaned);
   cleaned = stripExchangeTickers(cleaned);
   cleaned = stripCompanyBoilerplate(cleaned);
-  cleaned = cleaned.replace(/\.\.\./g, "").replace(/…/g, "").replace(/\s+--\s+/g, " ");
-  cleaned = cleaned.replace(/\s+[-–—]\s*$/g, "").replace(/\.\s*[-–—]\s*$/g, ".");
+  cleaned = cleaned.replace(/\.\.\./g, "").replace(/\s+--\s+/g, " ");
   return normalizeWhitespace(cleaned);
 }
 
@@ -1531,9 +1447,7 @@ function isSummaryMetaCommentary(sentence: string): boolean {
     /\bappears to cover\b/.test(lower) ||
     /\bframes the story around\b/.test(lower) ||
     /\bcaptures the main factual points\b/.test(lower) ||
-    /\bavailable reporting preview\b/.test(lower) ||
-    /\bavailable in this brief\b/.test(lower) ||
-    /\bpreview excerpt\b/.test(lower)
+    /\bavailable reporting preview\b/.test(lower)
   );
 }
 
@@ -3117,43 +3031,35 @@ function buildThirtySecondEventBullet(
     if (!bullet || overlapsHeadline(bullet, headline)) continue;
     if (normalizeForCompare(bullet) === normalizeForCompare(headline)) continue;
     if (isTooSimilarToSource(bullet, sentence)) continue;
-    if (isSummaryMetaCommentary(bullet) || isPromotionalBriefCopy(bullet)) continue;
-    return cleanBullet(bullet, 165).replace(/\.$/, "");
-  }
-
-  if (entity) {
-    const lead = paraphraseHeadlineLead(headline, entity);
-    if (lead && countWords(lead) >= 8 && !overlapsHeadline(lead, headline)) {
-      return cleanBullet(lead, 165).replace(/\.$/, "");
-    }
+    return cleanBullet(bullet, 140).replace(/\.$/, "");
   }
 
   if (facts.hasWarning && facts.quotedPhrases.length > 0 && facts.headlineTopic) {
     return cleanBullet(
       `${facts.headlineTopic} saw an update accompanied by a "${facts.quotedPhrases[0]}" warning`,
-      165
+      140
     ).replace(/\.$/, "");
   }
 
-  if (facts.amounts.length > 0 && entity) {
-    return cleanBullet(`${entity} is tied to ${facts.amounts[0]} in the reported development`, 165).replace(
-      /\.$/,
-      ""
-    );
+  if (facts.amounts.length > 0 && facts.topicTerms.length > 0) {
+    return cleanBullet(
+      `Reporting links ${facts.topicTerms.join(" and ")} to figures including ${facts.amounts[0]}`,
+      140
+    ).replace(/\.$/, "");
   }
 
   if (entity) {
-    return cleanBullet(`${entity} is at the center of the development described in the reporting`, 165).replace(
+    return cleanBullet(`${entity} is at the center of the development described in this report`, 140).replace(
       /\.$/,
       ""
     );
   }
 
   if (facts.headlineTopic) {
-    return cleanBullet(`The story covers ${facts.headlineTopic}`, 165).replace(/\.$/, "");
+    return cleanBullet(`The story covers ${facts.headlineTopic}`, 140).replace(/\.$/, "");
   }
 
-  return cleanBullet(`The report covers ${headlineCore(headline).toLowerCase()}`, 165).replace(/\.$/, "");
+  return cleanBullet(`The report covers ${headline.toLowerCase()}`, 140).replace(/\.$/, "");
 }
 
 function buildThirtySecondStakeBullet(
@@ -3165,54 +3071,37 @@ function buildThirtySecondStakeBullet(
   financeRelated: boolean
 ): string {
   void financeRelated;
-  if (facts.amounts.length > 0) {
-    return cleanBullet(`The reporting cites ${facts.amounts[0]} as a key figure in the story`, 165).replace(
-      /\.$/,
-      ""
-    );
-  }
-
   if (facts.organizations.length > 0 && facts.amounts.length > 0) {
     return cleanBullet(
       `${facts.organizations[0]} are tied to a potential ${facts.amounts[facts.amounts.length - 1]} exposure`,
-      165
-    ).replace(/\.$/, "");
-  }
-
-  if (facts.quotedPhrases.length > 0 && facts.hasWarning) {
-    return cleanBullet(
-      `Officials used "${facts.quotedPhrases[0]}" warning language in the reporting`,
-      165
-    ).replace(/\.$/, "");
-  }
-
-  if (facts.topicTerms.length > 0) {
-    return cleanBullet(
-      `The story centers on ${facts.topicTerms.slice(0, 2).join(" and ")}`,
-      165
+      140
     ).replace(/\.$/, "");
   }
 
   if (entity) {
-    return cleanBullet(`${entity} is named directly in the reporting`, 165).replace(/\.$/, "");
+    return cleanBullet(`${entity} is named directly in the reporting`, 140).replace(/\.$/, "");
   }
 
   const civic = extractCivicAffectedParties(headline, excerpt);
   if (civic.length > 0) {
-    return cleanBullet(`Those most directly affected include ${formatSubjectList(civic)}`, 165).replace(
+    return cleanBullet(`Those most directly affected include ${formatSubjectList(civic)}`, 140).replace(/\.$/, "");
+  }
+
+  if (facts.amounts.length > 0) {
+    return cleanBullet(`The cited ${facts.amounts[0]} figure sets the scale discussed in the story`, 140).replace(
       /\.$/,
       ""
     );
   }
 
   if (ctx.subjects.length > 0) {
-    return cleanBullet(`The story centers on ${formatSubjectList(ctx.subjects.slice(0, 2))}`, 165).replace(
-      /\.$/,
-      ""
-    );
+    return cleanBullet(`The story centers on ${formatSubjectList(ctx.subjects)}`, 140).replace(/\.$/, "");
   }
 
-  return cleanBullet("The reporting adds key numbers and context beyond the headline", 165).replace(/\.$/, "");
+  return cleanBullet("The named institutions and communities carry the most direct stake", 140).replace(
+    /\.$/,
+    ""
+  );
 }
 
 function buildThirtySecondImpactBullet(
@@ -3374,40 +3263,7 @@ function uniqueThirtySecondBullets(bullets: string[], facts: PreviewFacts, headl
   return unique.slice(0, 3);
 }
 
-function pickThirtySecondBullet(
-  candidate: string,
-  fallback: () => string,
-  headline: string,
-  existing: string[] = []
-): string {
-  const tryBullet = (text: string): string => polishBriefCopyText(text);
-
-  let bullet = tryBullet(candidate);
-  if (
-    bullet &&
-    !overlapsHeadline(bullet, headline) &&
-    !isNearDuplicate(bullet, existing) &&
-    !isSummaryMetaCommentary(bullet) &&
-    !isPromotionalBriefCopy(bullet)
-  ) {
-    return bullet;
-  }
-
-  bullet = tryBullet(fallback());
-  if (
-    bullet &&
-    !overlapsHeadline(bullet, headline) &&
-    !isNearDuplicate(bullet, existing) &&
-    !isSummaryMetaCommentary(bullet) &&
-    !isPromotionalBriefCopy(bullet)
-  ) {
-    return bullet;
-  }
-
-  return bullet || tryBullet("Follow-up reporting will clarify timing, scope, and official response");
-}
-
-/** Three useful bullets: what happened, key detail, what to watch next. */
+/** Three useful bullets: what happened, why it matters, what to watch. */
 export function buildThirtySecondVersion(
   headline: string,
   excerpt: string,
@@ -3420,25 +3276,18 @@ export function buildThirtySecondVersion(
   const entity = extractPrimaryEntity(headline, excerpt);
   const facts = extractPreviewFacts(headline, excerpt);
 
-  const event = pickThirtySecondBullet(
-    buildThirtySecondEventBullet(headline, excerpt, entity, facts),
-    () => buildThirtySecondEventBullet(headline, excerpt, entity, facts),
+  const bullets = uniqueThirtySecondBullets(
+    [
+      buildThirtySecondEventBullet(headline, excerpt, entity, facts),
+      buildThirtySecondStakeBullet(facts, ctx, entity, headline, excerpt, financeRelated),
+      buildThirtySecondImpactBullet(ctx, entity, headline, financeRelated, facts),
+      buildWatchBullet(ctx, entity, financeRelated, facts),
+    ],
+    facts,
     headline
   );
-  const context = pickThirtySecondBullet(
-    buildThirtySecondStakeBullet(facts, ctx, entity, headline, excerpt, financeRelated),
-    () => buildThirtySecondStakeBullet(facts, ctx, entity, headline, excerpt, financeRelated),
-    headline,
-    [event]
-  );
-  const watch = pickThirtySecondBullet(
-    buildWatchBullet(ctx, entity, financeRelated, facts).replace(/^Track\b/i, "Watch"),
-    () => buildWatchBullet(ctx, entity, financeRelated, facts).replace(/^Track\b/i, "Watch"),
-    headline,
-    [event, context]
-  );
 
-  return polishThirtySecondVersion([event, context, watch].map((bullet) => `• ${bullet}`).join("\n"));
+  return bullets.map((bullet) => `• ${bullet}`).join("\n");
 }
 
 export function parseThirtySecondBullets(value: string): string[] {
@@ -3446,49 +3295,6 @@ export function parseThirtySecondBullets(value: string): string[] {
     .split("\n")
     .map((line) => line.replace(/^[\s•\-*]+/, "").trim())
     .filter(Boolean);
-}
-
-function buildArticleSignificanceSentence(
-  facts: PreviewFacts,
-  ctx: ArticlePreviewContext,
-  entity: string,
-  headline: string,
-  excerpt: string,
-  financeRelated: boolean
-): string {
-  if (financeRelated && facts.topicTerms.includes("car finance") && facts.amounts.some((a) => /\bbillion|bn\b/i.test(a))) {
-    return "Large compensation estimates tied to car finance practices can affect bank reserves and how lenders price consumer credit.";
-  }
-  if (financeRelated && facts.hasWarning && facts.organizations.length > 0) {
-    return `The warning language involving ${facts.organizations[0]} suggests the issue may move from headlines into formal remediation or regulatory action.`;
-  }
-  if (financeRelated && /\bearnings|quarter|results|guidance\b/i.test(headline) && entity) {
-    return `${entity}'s reported figures can change how analysts assess recent performance, margin trends, and whether management guidance still looks credible.`;
-  }
-  if (financeRelated && ctx.themes.includes("rates")) {
-    return "Changes in rates and inflation expectations can flow through to mortgage demand, corporate borrowing costs, and the valuation of rate-sensitive assets.";
-  }
-  if (financeRelated && ctx.themes.includes("merger") && entity) {
-    return `Deal progress or failure can reshape expectations for ${entity}, its rivals, and suppliers tied to the companies involved.`;
-  }
-  if (financeRelated && facts.amounts.some((amount) => /\bbillion|bn|million|m\b/i.test(amount))) {
-    const amount = facts.amounts.find((item) => /\bbillion|bn|million|m\b/i.test(item)) ?? facts.amounts[0];
-    return `The ${amount} figure cited in the reporting is material because it frames the scale of spending, exposure, or revenue impact that investors and policymakers will scrutinize next.`;
-  }
-  const civic = extractCivicAffectedParties(headline, excerpt);
-  if (civic.length > 0) {
-    return `The development has the most immediate relevance for ${formatSubjectList(civic)}, especially if follow-up reporting confirms scope, timing, or official response.`;
-  }
-  if (facts.headlineTopic && !overlapsHeadline(facts.headlineTopic, headline)) {
-    return `The update matters because it adds a new layer of detail to ${facts.headlineTopic}, giving readers a clearer read on what changed and what remains unresolved.`;
-  }
-  if (entity) {
-    return `${entity} and the stakeholders named in the reporting are the audience most likely to feel the immediate effects of this update.`;
-  }
-  if (financeRelated) {
-    return "The reporting describes a finance development whose practical impact will depend on what follow-up disclosures confirm about timing, scope, and official response.";
-  }
-  return "The people, institutions, or communities named in the reporting are the primary audience for this update.";
 }
 
 export function buildWhyItMatters(
@@ -3509,49 +3315,64 @@ export function buildWhyItMatters(
   const parts: string[] = [];
 
   for (const sentence of summarySentences(excerpt)) {
-    const rewritten = paraphraseExcerptSentence(sentence, entity, headline);
     if (
-      rewritten &&
-      acceptSummarySentence(rewritten, headline, parts) &&
-      !isPromotionalBriefCopy(rewritten)
+      !/\bbecause|so that|as a result|which means|could|may|expected|important|significant|impact|after|amid|facing|potential\b/i.test(
+        sentence
+      )
     ) {
+      continue;
+    }
+    const rewritten = paraphraseExcerptSentence(sentence, entity, headline);
+    if (rewritten && !overlapsHeadline(rewritten, headline) && !isNearDuplicate(rewritten, parts)) {
       parts.push(rewritten);
     }
     if (parts.length >= 2) break;
   }
 
-  const significance = buildArticleSignificanceSentence(
-    facts,
-    ctx,
-    entity,
-    headline,
-    excerpt,
-    financeRelated
-  );
-  if (significance && !isNearDuplicate(significance, parts)) {
-    parts.push(significance);
-  }
-
-  if (parts.length < 2) {
+  if (parts.length === 0) {
     const fallback = ctx.sentences.find(
-      (sentence) =>
-        !overlapsHeadline(sentence, headline) &&
-        !isSummaryBoilerplate(sentence) &&
-        !isSummaryMetaCommentary(sentence)
+      (sentence) => !overlapsHeadline(sentence, headline) && !isSummaryBoilerplate(sentence)
     );
     if (fallback) {
       const rewritten = paraphraseExcerptSentence(fallback, entity, headline);
-      if (rewritten && !isNearDuplicate(rewritten, parts)) {
-        parts.push(rewritten);
-      }
+      if (rewritten) parts.push(rewritten);
     }
   }
 
-  if (parts.length === 0) {
-    parts.push(buildArticleSignificanceSentence(facts, ctx, entity, headline, excerpt, financeRelated));
+  if (financeRelated && facts.topicTerms.includes("car finance") && facts.amounts.some((a) => /\bbillion|bn\b/i.test(a))) {
+    parts.push(
+      "Large compensation estimates tied to car finance practices can affect bank reserves and how lenders price consumer credit."
+    );
+  } else if (financeRelated && facts.hasWarning && facts.organizations.length > 0) {
+    parts.push(
+      `The warning language alongside ${facts.organizations[0]} in the preview suggests the issue may move from headlines into formal remediation or regulatory action.`
+    );
+  } else if (financeRelated) {
+    if (/\bearnings|quarter|results|guidance\b/i.test(headline) && entity) {
+      parts.push(`${entity}'s reported figures can affect how analysts assess its recent performance.`);
+    } else if (ctx.themes.includes("rates")) {
+      parts.push("Changes in rates and inflation expectations can flow through to borrowing costs and asset prices.");
+    } else if (ctx.themes.includes("merger") && entity) {
+      parts.push(`The deal news can change expectations for ${entity} and for similar companies in the same industry.`);
+    } else if (facts.amounts.some((amount) => /\bbillion|bn|million|m\b/i.test(amount))) {
+      parts.push(
+        `The ${facts.amounts.find((amount) => /\bbillion|bn|million|m\b/i.test(amount)) ?? facts.amounts[0]} figure cited in the preview is the main reason the story carries financial weight.`
+      );
+    }
+  } else if (parts.length === 0) {
+    const civic = extractCivicAffectedParties(headline, excerpt);
+    if (civic.length > 0) {
+      parts.push(`The development has the most immediate relevance for ${formatSubjectList(civic)}.`);
+    } else if (facts.headlineTopic) {
+      parts.push(`The update matters because it advances ${facts.headlineTopic} beyond earlier reporting in the preview.`);
+    } else if (ctx.limited) {
+      parts.push(
+        "The headline and excerpt describe a news development whose broader effects depend on details not included in the preview."
+      );
+    }
   }
 
-  return polishBriefSection(parts.slice(0, 4).map((part) => ensurePeriod(part)).join(" "));
+  return parts.slice(0, 2).join(" ");
 }
 
 export function buildWhoIsAffected(
@@ -3561,73 +3382,44 @@ export function buildWhoIsAffected(
   source = "",
   publishedAt?: string,
   ticker = "",
-  financeRelated = isFinanceRelatedStory(headline, excerpt, ticker),
-  excludeText = ""
+  financeRelated = isFinanceRelatedStory(headline, excerpt, ticker)
 ): string {
   void articleType;
   void source;
   void publishedAt;
   const ctx = buildArticlePreviewContext(headline, excerpt, source, publishedAt);
   const entity = extractPrimaryEntity(headline, excerpt);
-  const facts = extractPreviewFacts(headline, excerpt);
-  const storyText = combinedText(headline, excerpt);
-  const parties: string[] = [];
 
-  const addParty = (name: string) => {
-    const trimmed = normalizeWhitespace(name);
-    if (!trimmed || trimmed.length < 3) return;
-    if (parties.some((party) => party.toLowerCase() === trimmed.toLowerCase())) return;
-    parties.push(trimmed);
-  };
-
-  if (entity) addParty(entity);
-  for (const org of facts.organizations) addParty(org);
-  for (const subject of ctx.subjects) addParty(subject);
-  for (const civic of extractCivicAffectedParties(headline, excerpt)) addParty(civic);
-
-  if (/\bshareholders\b/i.test(storyText) && entity) addParty(`${entity} shareholders`);
-  if (/\bemployees\b/i.test(storyText) && entity) addParty(`${entity} employees`);
-  if (/\bcustomers\b/i.test(storyText) && entity) addParty(`${entity} customers`);
-  if (/\bborrowers\b/i.test(storyText)) addParty("borrowers");
-  if (/\bsavers\b/i.test(storyText)) addParty("savers");
-
-  let result = "";
-  if (parties.length >= 2) {
-    result = `Those most directly affected include ${formatSubjectList(parties.slice(0, 4))}.`;
-  } else if (parties.length === 1) {
-    result = `${parties[0]} is among the groups named in the reporting as facing the most immediate effects.`;
-  } else if (financeRelated && entity) {
-    if (/\bearnings|stock|shares|guidance|quarter|results\b/i.test(storyText)) {
-      result = `${entity}, its shareholders, and analysts covering the company are the most directly affected audience for this update.`;
-    } else {
-      result = `${entity} and the counterparties, regulators, or customers named in the reporting are the most directly affected parties.`;
+  if (financeRelated && entity) {
+    if (/\bearnings|stock|shares|guidance|quarter|results\b/i.test(`${headline} ${excerpt}`)) {
+      return `${entity}, its shareholders, and analysts covering the company are the most directly affected audience for this update.`;
     }
-  } else if (financeRelated && ctx.themes.includes("rates")) {
-    result =
-      "Borrowers with floating-rate debt, mortgage applicants, and savers watching deposit yields are among the groups most sensitive to the development.";
-  } else if (financeRelated && ctx.themes.includes("merger")) {
-    result =
-      "Employees, customers, and rival firms connected to the companies named in the report may be affected by deal progress or failure.";
-  } else {
-    const rewritten = ctx.sentences
-      .slice(0, 2)
-      .map((sentence) => paraphraseExcerptSentence(sentence, entity, headline))
-      .find((sentence) => sentence && countWords(sentence) >= 8 && !isSummaryMetaCommentary(sentence));
-    result =
-      rewritten ||
-      "The people, organizations, or communities named in the headline and excerpt are the primary audience for this update.";
+    return `${entity} and parties tied to the development described in the report are the most directly affected.`;
   }
 
-  if (excludeText && isNearDuplicate(result, [excludeText])) {
-    if (parties.length > 0) {
-      result = `The reporting identifies ${formatSubjectList(parties.slice(0, 3))} as carrying the most immediate operational or financial exposure.`;
-    } else {
-      result =
-        "Stakeholders named in the linked report are the groups most likely to feel the first-order effects of this development.";
-    }
+  if (financeRelated && ctx.themes.includes("rates")) {
+    return "Borrowers, savers, and businesses sensitive to interest-rate changes may feel effects if the development shifts policy expectations.";
   }
 
-  return polishBriefSection(result);
+  if (financeRelated && ctx.themes.includes("merger")) {
+    return "Employees, customers, and rival firms connected to the companies named in the report may be affected by deal progress or failure.";
+  }
+
+  const civic = extractCivicAffectedParties(headline, excerpt);
+  if (civic.length > 0) {
+    return `Those most directly affected include ${formatSubjectList(civic)}.`;
+  }
+
+  const rewritten = ctx.sentences
+    .slice(0, 2)
+    .map((sentence) => paraphraseExcerptSentence(sentence, "", headline))
+    .filter((sentence) => sentence && countWords(sentence) >= 8);
+
+  if (rewritten.length > 0) {
+    return rewritten.join(" ");
+  }
+
+  return "The people, organizations, or communities named in the headline and excerpt are the primary audience for this update.";
 }
 
 export function buildBullCase(headline: string, excerpt: string, sentiment: Sentiment): string {
@@ -3812,26 +3604,14 @@ export function enrichArticleCopy(brief: Brief): Brief {
   const articleType = inferArticleType(analysisText);
   const metadata = deriveArticleMetadata(brief);
 
-  const whyItMatters = buildWhyItMatters(
-    brief.headline,
-    brief.excerpt,
-    articleType,
-    brief.source,
-    brief.publishedAt,
-    brief.ticker,
-    financeRelated
-  );
-
   return {
     ...brief,
-    summary: polishBriefSummary(
-      buildFinBriefSummary(
-        brief.headline,
-        brief.excerpt,
-        brief.source,
-        brief.publishedAt,
-        financeRelated
-      )
+    summary: buildFinBriefSummary(
+      brief.headline,
+      brief.excerpt,
+      brief.source,
+      brief.publishedAt,
+      financeRelated
     ),
     thirtySecondVersion: buildThirtySecondVersion(
       brief.headline,
@@ -3840,7 +3620,15 @@ export function enrichArticleCopy(brief: Brief): Brief {
       brief.publishedAt,
       financeRelated
     ),
-    whyItMatters,
+    whyItMatters: buildWhyItMatters(
+      brief.headline,
+      brief.excerpt,
+      articleType,
+      brief.source,
+      brief.publishedAt,
+      brief.ticker,
+      financeRelated
+    ),
     whoIsAffected: buildWhoIsAffected(
       brief.headline,
       brief.excerpt,
@@ -3848,8 +3636,7 @@ export function enrichArticleCopy(brief: Brief): Brief {
       brief.source,
       brief.publishedAt,
       brief.ticker,
-      financeRelated,
-      whyItMatters
+      financeRelated
     ),
     sentiment: metadata.sentiment,
     sentimentConfidence: metadata.sentimentConfidence,
@@ -3862,9 +3649,4 @@ export function enrichArticleCopy(brief: Brief): Brief {
 /** Apply image + FinBrief copy enrichment for every Article Brief surface. */
 export function enrichBrief(brief: Brief): Brief {
   return enrichArticleCopy(enrichBriefImage(brief));
-}
-
-/** Compatibility alias used by brief hydration paths. */
-export function hydrateArticleBrief(brief: Brief): Brief {
-  return enrichBrief(brief);
 }
