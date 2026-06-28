@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
 import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
-import { enrichBrief, parseThirtySecondBullets } from "@/lib/article-analysis";
+import { hydrateArticleBrief, parseThirtySecondBullets } from "@/lib/article-analysis";
 import { formatDateTime } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
@@ -44,7 +44,7 @@ function Section({
 }
 
 export function ArticleDetail({ article }: { article: Brief }) {
-  const enriched = enrichBrief(article);
+  const enriched = hydrateArticleBrief(article);
   const fallbackLabel = enriched.ticker !== "—" ? enriched.ticker : enriched.topic;
   const fallbackImageId = enriched.fallbackImageId;
   const imageDisplay = enriched.imageDisplay;

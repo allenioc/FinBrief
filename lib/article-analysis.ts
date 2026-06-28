@@ -4300,3 +4300,8 @@ export function enrichArticleCopy(brief: Brief): Brief {
 export function enrichBrief(brief: Brief): Brief {
   return enrichArticleCopy(enrichBriefImage(brief));
 }
+
+/** Strip saved explanation fields, then rebuild all Article Brief copy from source. */
+export function hydrateArticleBrief(brief: Brief): Brief {
+  return enrichBrief(stripSavedExplanationFields(brief));
+}

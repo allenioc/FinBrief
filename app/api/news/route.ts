@@ -8,7 +8,7 @@ import {
 import { providerArticlesToBriefs } from "@/lib/news-normalizer";
 import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT, DAILY_EDITION_REPLACEMENT_MIN, FAILURE_RETRY_COOLDOWN_MS, SUCCESS_FETCH_COOLDOWN_MS } from "@/lib/news-constants";
 import { searchBriefs } from "@/lib/briefs";
-import { enrichBrief, stripSavedExplanationFields } from "@/lib/article-analysis";
+import { hydrateArticleBrief } from "@/lib/article-analysis";
 import { countArticlesWithImageUrl } from "@/lib/article-image";
 import { filterBriefsForTopic } from "@/lib/topic-stories";
 import {
@@ -248,7 +248,7 @@ function isAdminRequest(request: NextRequest): { authorized: boolean; note?: str
 }
 
 function hydrateCachedBrief(brief: Brief): Brief {
-  return enrichBrief(stripSavedExplanationFields(brief));
+  return hydrateArticleBrief(brief);
 }
 
 function enrichPayloadBriefs(payload: CachedPayload): CachedPayload {

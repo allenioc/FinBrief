@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { enrichBrief, stripSavedExplanationFields } from "@/lib/article-analysis";
+import { enrichBrief } from "@/lib/article-analysis";
 import {
   EXPLANATION_COPY_VERSION,
   isTrustedExplanationVersion,
-  purgeStaleExplanationClientStorage,
+  migrateArticleBriefExplanationCache,
 } from "@/lib/explanation-cache";
 import { formatWeekLabel, weekKeyFromDate, type WeeklyArchivePayload } from "@/lib/weekly-archive";
 import type { Brief } from "@/lib/types";
@@ -68,7 +68,7 @@ export function useWeeklyArchive(enabled: boolean = true) {
     const load = async () => {
       setLoading(true);
       setError(null);
-      purgeStaleExplanationClientStorage();
+      migrateArticleBriefExplanationCache();
       const localCache = readLocalWeekCache(weekKey);
 
       try {

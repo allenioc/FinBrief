@@ -1,6 +1,5 @@
 import type { Brief } from "./types";
 import { EXPLANATION_COPY_VERSION } from "./article-brief-quality";
-import { purgeStaleExplanationClientStorage } from "./explanation-cache";
 import { SUMMARY_COPY_VERSION } from "./article-analysis";
 
 export type EditionDataSource = "daily_edition" | "topic_filter" | "cache" | "session_storage";
@@ -68,9 +67,8 @@ export function readEditionSnapshot(): DailyEditionSnapshot | null {
   return readFromStorage();
 }
 
-/** Bootstrap read rejects legacy snapshots missing the current explanationVersion. */
+/** Bootstrap read uses trusted edition snapshots only (no legacy explanation bypass). */
 export function readBootstrapSnapshot(): DailyEditionSnapshot | null {
-  purgeStaleExplanationClientStorage();
   return readEditionSnapshot();
 }
 

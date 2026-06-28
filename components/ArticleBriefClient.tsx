@@ -3,43 +3,53 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
-import { enrichBrief, stripSavedExplanationFields } from "@/lib/article-analysis";
+import { hydrateArticleBrief } from "@/lib/article-analysis";
 import {
   EXPLANATION_COPY_VERSION,
-  isTrustedExplanationVersion,
-  purgeStaleArticleSessionStorage,
-  purgeStaleExplanationClientStorage,
+  clearArticleBriefSessionStash,
+  migrateArticleBriefExplanationCache,
 } from "@/lib/explanation-cache";
 import { peekDashboardReturnHref } from "@/lib/dashboard-scroll-restore";
 import { ArticleDetail } from "./ArticleDetail";
 import { ArticleBriefFloatingBack } from "./ArticleBriefFloatingBack";
 
-function hydrateBrief(brief: Brief): Brief {
-  return enrichBrief(stripSavedExplanationFields(brief));
-}
-
-function readSessionArticle(id: string): Brief | null {
+async function fetchArticleFromApi(id: string): Promise<Brief | null> {
   try {
-    const raw = sessionStorage.getItem(`finbrief-article-${id}`);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Brief;
-    if (!isTrustedExplanationVersion(parsed.explanationVersion)) {
-      sessionStorage.removeItem(`finbrief-article-${id}`);
-      return null;
+    const response = await fetch(`/api/news?articleId=${encodeURIComponent(id)}`, {
+      cache: "no-store",
+    });
+    if (response.ok) {
+      const payload = (await response.json()) as { found: boolean; article?: Brief };
+      if (payload.found && payload.article) {
+        return payload.article;
+      }
     }
-    return parsed;
   } catch {
-    sessionStorage.removeItem(`finbrief-article-${id}`);
-    return null;
+    // Fall through to the edition lookup.
   }
+
+  try {
+    const params = new URLSearchParams({ timeRange: "week", limit: "20", page: "1" });
+    const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
+    if (response.ok) {
+      const payload = (await response.json()) as { briefs?: Brief[] };
+      return payload.briefs?.find((brief) => brief.id === id) ?? null;
+    }
+  } catch {
+    // Nothing else to try.
+  }
+
+  return null;
 }
 
 /**
  * Resolves the clicked article in the browser. Server caches on Vercel are
  * per-instance, so the most reliable sources are:
- * 1. sessionStorage (stashed by the Dashboard card the user clicked),
- * 2. the saved article index / editions via /api/news?articleId=...,
- * 3. the current daily edition (normal cache rules; no fresh/nocache params).
+ * 1. the saved article index / editions via /api/news?articleId=...,
+ * 2. the current daily edition (normal cache rules; no fresh/nocache params),
+ * 3. the server-rendered local lookup fallback.
+ *
+ * sessionStorage stashes are cleared on load and never used for explanation copy.
  */
 export function ArticleBriefClient({
   id,
@@ -60,17 +70,18 @@ export function ArticleBriefClient({
 
     const finish = (found: Brief | null) => {
       if (cancelled) return;
-      setArticle(found ? hydrateBrief(found) : null);
+      setArticle(found ? hydrateArticleBrief(found) : null);
       setResolved(true);
     };
 
     const resolve = async () => {
-      purgeStaleExplanationClientStorage();
-      purgeStaleArticleSessionStorage(id);
+      migrateArticleBriefExplanationCache();
+      clearArticleBriefSessionStash(id);
 
-      const stashed = readSessionArticle(id);
-      if (stashed) {
-        finish(stashed);
+      const apiArticle = await fetchArticleFromApi(id);
+      if (cancelled) return;
+      if (apiArticle) {
+        finish(apiArticle);
         return;
       }
 
@@ -79,32 +90,6 @@ export function ArticleBriefClient({
         return;
       }
 
-      try {
-        const response = await fetch(`/api/news?articleId=${encodeURIComponent(id)}`, {
-          cache: "no-store",
-        });
-        if (response.ok) {
-          const payload = (await response.json()) as { found: boolean; article?: Brief };
-          if (payload.found && payload.article) {
-            finish(payload.article);
-            return;
-          }
-        }
-      } catch {
-        // Fall through to the edition lookup.
-      }
-
-      try {
-        const params = new URLSearchParams({ timeRange: "week", limit: "20", page: "1" });
-        const response = await fetch(`/api/news?${params.toString()}`, { cache: "no-store" });
-        if (response.ok) {
-          const payload = (await response.json()) as { briefs?: Brief[] };
-          finish(payload.briefs?.find((brief) => brief.id === id) ?? null);
-          return;
-        }
-      } catch {
-        // Nothing else to try.
-      }
       finish(null);
     };
 
