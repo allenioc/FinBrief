@@ -1,4 +1,5 @@
-import { EXPLANATION_COPY_VERSION } from "./article-brief-quality";
+/** Bump when Article Brief client-side explanation caches should reset. */
+export const EXPLANATION_COPY_VERSION = 8;
 
 /** Tracks the last Article Brief explanation cache migration applied in this browser. */
 export const EXPLANATION_CACHE_MIGRATION_KEY = "finbrief-explanation-cache-version";
@@ -110,5 +111,3 @@ export function purgeStaleArticleSessionStorage(articleId?: string): void {
   }
   purgeAllArticleBriefSessionStashes();
 }
-
-export { EXPLANATION_COPY_VERSION };

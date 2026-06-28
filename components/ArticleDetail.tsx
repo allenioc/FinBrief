@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
 import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
-import { hydrateArticleBrief, parseThirtySecondBullets } from "@/lib/article-analysis";
+import { enrichBrief, parseThirtySecondBullets } from "@/lib/article-analysis";
 import { formatDateTime } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
@@ -44,7 +44,7 @@ function Section({
 }
 
 export function ArticleDetail({ article }: { article: Brief }) {
-  const enriched = hydrateArticleBrief(article);
+  const enriched = enrichBrief(article);
   const fallbackLabel = enriched.ticker !== "—" ? enriched.ticker : enriched.topic;
   const fallbackImageId = enriched.fallbackImageId;
   const imageDisplay = enriched.imageDisplay;
@@ -162,24 +162,24 @@ export function ArticleDetail({ article }: { article: Brief }) {
           <div className="space-y-4">
             <h2 className="fin-section-title">Analysis</h2>
             <Section title="Bullish interpretation" variant="bull">
-              {enriched.bullCase}
+              {article.bullCase}
             </Section>
             <Section title="Bearish interpretation" variant="bear">
-              {enriched.bearCase}
+              {article.bearCase}
             </Section>
             <Section title="Neutral / uncertain view" variant="neutral">
-              {enriched.neutralView}
+              {article.neutralView}
             </Section>
             <Section title="Key risks">
               <ul className="list-inside list-disc space-y-2">
-                {enriched.risks.map((r) => (
+                {article.risks.map((r) => (
                   <li key={r}>{r}</li>
                 ))}
               </ul>
             </Section>
             <Section title="Things to watch next">
               <ul className="list-inside list-disc space-y-2">
-                {enriched.thingsToWatch.map((t) => (
+                {article.thingsToWatch.map((t) => (
                   <li key={t}>{t}</li>
                 ))}
               </ul>

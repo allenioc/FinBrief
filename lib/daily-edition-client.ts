@@ -1,5 +1,4 @@
 import type { Brief } from "./types";
-import { EXPLANATION_COPY_VERSION } from "./article-brief-quality";
 import { SUMMARY_COPY_VERSION } from "./article-analysis";
 
 export type EditionDataSource = "daily_edition" | "topic_filter" | "cache" | "session_storage";
@@ -15,7 +14,6 @@ export type DailyEditionSnapshot = {
   cacheStatus?: string;
   provider?: string;
   copyVersion?: number;
-  explanationVersion?: number;
 };
 
 const STORAGE_PREFIX = "finbrief-daily-edition";
@@ -36,7 +34,6 @@ export function isTrustedEditionSnapshot(snapshot: DailyEditionSnapshot | null |
   if (!snapshot) return false;
   if (snapshot.editionDateKey !== dailyEditionDateKey()) return false;
   if (snapshot.copyVersion !== SUMMARY_COPY_VERSION) return false;
-  if (snapshot.explanationVersion !== EXPLANATION_COPY_VERSION) return false;
   if (!Array.isArray(snapshot.briefs) || snapshot.briefs.length === 0) return false;
   if (snapshot.cacheStatus === "server_hydrate") return false;
   if (snapshot.provider === "mock" || snapshot.provider === "error") return false;
@@ -67,9 +64,25 @@ export function readEditionSnapshot(): DailyEditionSnapshot | null {
   return readFromStorage();
 }
 
-/** Bootstrap read uses trusted edition snapshots only (no legacy explanation bypass). */
+/** Bootstrap read accepts legacy copy versions so first paint can still show saved stories. */
 export function readBootstrapSnapshot(): DailyEditionSnapshot | null {
-  return readEditionSnapshot();
+  const trusted = readEditionSnapshot();
+  if (trusted) return trusted;
+
+  if (typeof window === "undefined") return null;
+  try {
+    const key = storageKey(dailyEditionDateKey());
+    const raw = window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as DailyEditionSnapshot;
+    if (parsed.editionDateKey !== dailyEditionDateKey()) return null;
+    if (!Array.isArray(parsed.briefs) || parsed.briefs.length === 0) return null;
+    if (parsed.cacheStatus === "server_hydrate") return null;
+    if (parsed.provider === "mock" || parsed.provider === "error") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 export function writeEditionSnapshot(snapshot: DailyEditionSnapshot): void {
