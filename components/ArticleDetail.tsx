@@ -227,7 +227,6 @@ export function ArticleDetail({ article }: { article: Brief }) {
                   >
                     Read full article at source ↗
                   </a>
-                  <p className="mt-3 break-all text-xs text-fin-subtle">{article.originalUrl}</p>
                 </dd>
               </div>
             </dl>
