@@ -172,14 +172,14 @@ export function ArticleDetail({ article }: { article: Brief }) {
             </Section>
             <Section title="Key risks">
               <ul className="list-inside list-disc space-y-2">
-                {article.risks.map((r) => (
+                {enriched.risks.map((r) => (
                   <li key={r}>{r}</li>
                 ))}
               </ul>
             </Section>
             <Section title="Things to watch next">
               <ul className="list-inside list-disc space-y-2">
-                {article.thingsToWatch.map((t) => (
+                {enriched.thingsToWatch.map((t) => (
                   <li key={t}>{t}</li>
                 ))}
               </ul>
