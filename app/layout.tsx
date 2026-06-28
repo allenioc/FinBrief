@@ -9,6 +9,7 @@ import "./globals.css";
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
+  display: "optional",
 });
 
 const jetbrainsMono = JetBrains_Mono({

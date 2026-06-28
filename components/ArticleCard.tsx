@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { memo, useMemo } from "react";
 import type { Brief } from "@/lib/types";
 import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
 import { formatDateTime, formatPublishedTimeLabel } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
-import { enrichBrief } from "@/lib/article-analysis";
+import { enrichBrief, SUMMARY_COPY_VERSION } from "@/lib/article-analysis";
 import { saveDashboardScroll } from "@/lib/dashboard-scroll-restore";
 import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
@@ -17,16 +18,32 @@ import { MarketImpactBadge } from "./MarketImpactBadge";
 import { SentimentBadge } from "./SentimentBadge";
 import { TooltipLabel } from "./Tooltip";
 
-export function ArticleCard({
-  article,
-  variant = "standard",
-  priorityImage = false,
-}: {
+type ArticleCardProps = {
   article: Brief;
   variant?: "hero" | "standard" | "compact";
   priorityImage?: boolean;
-}) {
-  const enriched = enrichBrief(article);
+};
+
+function ArticleCardInner({
+  article,
+  variant = "standard",
+  priorityImage = false,
+}: ArticleCardProps) {
+  const enriched = useMemo(
+    () => enrichBrief(article),
+    // Re-enrich only when source copy inputs change, not on unrelated parent re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on brief fields + copy version
+    [
+      article.id,
+      article.headline,
+      article.excerpt,
+      article.summary,
+      article.publishedAt,
+      article.source,
+      article.ticker,
+      SUMMARY_COPY_VERSION,
+    ]
+  );
   const fallbackLabel = enriched.ticker !== "—" ? enriched.ticker : enriched.topic;
   const fallbackImageId = enriched.fallbackImageId;
   const imageDisplay = enriched.imageDisplay;
@@ -54,7 +71,7 @@ export function ArticleCard({
 
   return (
     <article
-      className={`group fin-card fin-card-hover flex flex-col overflow-hidden ${
+      className={`group fin-card fin-card-hover fin-feed-card flex flex-col overflow-hidden ${
         isHero ? "sm:col-span-2" : ""
       }`}
     >
@@ -77,7 +94,7 @@ export function ArticleCard({
             fallbackKind={article.articleType}
             priority={priorityImage}
             sizes={imageSizes}
-            className="rounded-image object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+            className="rounded-image object-cover fin-feed-card-hover-image"
           />
         </div>
       </Link>
@@ -164,5 +181,15 @@ export function ArticleCard({
     </article>
   );
 }
+
+function areArticleCardPropsEqual(prev: ArticleCardProps, next: ArticleCardProps): boolean {
+  return (
+    prev.article === next.article &&
+    prev.variant === next.variant &&
+    prev.priorityImage === next.priorityImage
+  );
+}
+
+export const ArticleCard = memo(ArticleCardInner, areArticleCardPropsEqual);
 
 export const BriefCard = ArticleCard;

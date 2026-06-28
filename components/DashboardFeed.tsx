@@ -88,7 +88,15 @@ export function DashboardFeed({ query }: { query: string }) {
     restoreDashboardScroll();
   }, [ready, editionBriefs.length, topicQuery, isTopicView, weeklyLoading, topicStories.length]);
 
-  const { sections: groupedSections } = buildDashboardSections(editionBriefs);
+  const visibleBriefs = useMemo(
+    () => editionBriefs.slice(0, visibleCount),
+    [editionBriefs, visibleCount]
+  );
+
+  const { sections: groupedSections } = useMemo(
+    () => buildDashboardSections(visibleBriefs),
+    [visibleBriefs]
+  );
   const hasEditionStories = editionBriefs.length > 0;
   const hasVisibleStories = isTopicView
     ? topicStories.length > 0

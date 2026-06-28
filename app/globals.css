@@ -87,12 +87,23 @@ body {
   }
 
   .fin-card-hover {
-    @apply transition-all duration-300 ease-out;
+    @apply transition-[box-shadow,transform,border-color] duration-300 ease-out;
   }
 
-  .fin-card-hover:hover {
-    box-shadow: var(--shadow-float);
-    @apply -translate-y-0.5 border-fin-border-strong;
+  .fin-feed-card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 420px;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .fin-card-hover:hover {
+      box-shadow: var(--shadow-float);
+      @apply -translate-y-0.5 border-fin-border-strong;
+    }
+
+    .fin-feed-card-hover-image {
+      @apply transition-transform duration-500 group-hover:scale-[1.03];
+    }
   }
 
   .fin-panel {
