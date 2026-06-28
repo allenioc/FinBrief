@@ -1,4 +1,5 @@
 import type { Brief } from "./types";
+import { EXPLANATION_COPY_VERSION } from "./article-brief-quality";
 import { SUMMARY_COPY_VERSION } from "./article-analysis";
 
 export type EditionDataSource = "daily_edition" | "topic_filter" | "cache" | "session_storage";
@@ -14,6 +15,7 @@ export type DailyEditionSnapshot = {
   cacheStatus?: string;
   provider?: string;
   copyVersion?: number;
+  explanationVersion?: number;
 };
 
 const STORAGE_PREFIX = "finbrief-daily-edition";
@@ -34,6 +36,7 @@ export function isTrustedEditionSnapshot(snapshot: DailyEditionSnapshot | null |
   if (!snapshot) return false;
   if (snapshot.editionDateKey !== dailyEditionDateKey()) return false;
   if (snapshot.copyVersion !== SUMMARY_COPY_VERSION) return false;
+  if (snapshot.explanationVersion !== EXPLANATION_COPY_VERSION) return false;
   if (!Array.isArray(snapshot.briefs) || snapshot.briefs.length === 0) return false;
   if (snapshot.cacheStatus === "server_hydrate") return false;
   if (snapshot.provider === "mock" || snapshot.provider === "error") return false;

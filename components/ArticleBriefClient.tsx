@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
-import { enrichBrief } from "@/lib/article-analysis";
+import { enrichBrief, stripSavedExplanationFields } from "@/lib/article-analysis";
 import { peekDashboardReturnHref } from "@/lib/dashboard-scroll-restore";
 import { ArticleDetail } from "./ArticleDetail";
 import { ArticleBriefFloatingBack } from "./ArticleBriefFloatingBack";
@@ -23,7 +23,7 @@ export function ArticleBriefClient({
   initialArticle: Brief | null;
 }) {
   const [article, setArticle] = useState<Brief | null>(() =>
-    initialArticle ? enrichBrief(initialArticle) : null
+    initialArticle ? enrichBrief(stripSavedExplanationFields(initialArticle)) : null
   );
   const [resolved, setResolved] = useState<boolean>(Boolean(initialArticle));
 
@@ -37,7 +37,7 @@ export function ArticleBriefClient({
 
     const finish = (found: Brief | null) => {
       if (cancelled) return;
-      if (found) setArticle(enrichBrief(found));
+      if (found) setArticle(enrichBrief(stripSavedExplanationFields(found)));
       setResolved(true);
     };
 

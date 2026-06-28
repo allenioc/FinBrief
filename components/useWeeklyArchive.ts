@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { enrichBrief } from "@/lib/article-analysis";
 import { formatWeekLabel, weekKeyFromDate, type WeeklyArchivePayload } from "@/lib/weekly-archive";
 import type { Brief } from "@/lib/types";
 
@@ -95,7 +96,8 @@ export function useWeeklyArchive(enabled: boolean = true) {
   }, [enabled]);
 
   const briefs = useMemo<Brief[]>(
-    () => archive?.days.flatMap((day) => day.stories) ?? [],
+    () =>
+      archive?.days.flatMap((day) => day.stories.map((story) => enrichBrief(story))) ?? [],
     [archive]
   );
 

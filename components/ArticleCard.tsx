@@ -41,12 +41,12 @@ export function ArticleCard({
       ? "(max-width: 768px) 50vw, 240px"
       : "(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw";
 
-  // Stash the full article so /brief/[id] can render it instantly without
-  // depending on server-side caches (which are per-instance on Vercel).
+  // Stash source article fields only so /brief/[id] regenerates explanations
+  // from provider data instead of reusing cached summary/analysis copy.
   const stashArticle = () => {
     saveDashboardScroll();
     try {
-      sessionStorage.setItem(`finbrief-article-${enriched.id}`, JSON.stringify(enriched));
+      sessionStorage.setItem(`finbrief-article-${article.id}`, JSON.stringify(article));
     } catch {
       // Storage may be unavailable (private mode); the brief page has API fallbacks.
     }

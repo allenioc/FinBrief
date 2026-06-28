@@ -11,7 +11,7 @@ import {
 } from "react";
 import type { Brief } from "@/lib/types";
 import { countArticlesWithImageUrl } from "@/lib/article-image";
-import { enrichBrief, SUMMARY_COPY_VERSION } from "@/lib/article-analysis";
+import { enrichBrief, EXPLANATION_COPY_VERSION, SUMMARY_COPY_VERSION } from "@/lib/article-analysis";
 import { DAILY_EDITION_ARTICLE_LIMIT, DAILY_EDITION_REPLACEMENT_MIN } from "@/lib/news-constants";
 import {
   dailyEditionDateKey,
@@ -72,6 +72,7 @@ function snapshotFromBriefs(
     cacheStatus,
     provider,
     copyVersion: SUMMARY_COPY_VERSION,
+    explanationVersion: EXPLANATION_COPY_VERSION,
   };
 }
 
@@ -156,6 +157,7 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
       ...cached,
       briefs: enrichBriefs(cached.briefs),
       copyVersion: SUMMARY_COPY_VERSION,
+      explanationVersion: EXPLANATION_COPY_VERSION,
       source: cached.source ?? "cache",
     });
     return true;
@@ -194,6 +196,7 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
             ...cachedSnapshot,
             briefs: enrichBriefs(cachedSnapshot.briefs),
             copyVersion: SUMMARY_COPY_VERSION,
+            explanationVersion: EXPLANATION_COPY_VERSION,
             source: cachedSnapshot.source ?? "cache",
           });
         }

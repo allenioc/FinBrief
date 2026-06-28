@@ -1,6 +1,43 @@
+import type { Brief } from "./types";
+
 /** Shared quality gates for Article Brief explanation copy. */
 
-export const EXPLANATION_COPY_VERSION = 3;
+export const EXPLANATION_COPY_VERSION = 4;
+
+/** Source fields used to regenerate Article Brief explanations. Saved summary/analysis fields are not trusted. */
+export function stripSavedExplanationFields(brief: Brief): Brief {
+  return {
+    ...brief,
+    summary: "",
+    thirtySecondVersion: "",
+    whatHappened: "",
+    whyItMatters: "",
+    whoIsAffected: "",
+    bullCase: "",
+    bearCase: "",
+    neutralView: "",
+    risks: [],
+    thingsToWatch: [],
+    explanationVersion: undefined,
+  };
+}
+
+export function resolveProviderExcerpt(brief: Pick<Brief, "excerpt" | "whatHappened">): string {
+  const excerpt = brief.excerpt?.trim() ?? "";
+  if (excerpt && excerpt !== "No summary available from provider.") {
+    return excerpt;
+  }
+  return brief.whatHappened?.trim() ?? "";
+}
+
+export function hasTrustedExplanationCopy(brief: Brief): boolean {
+  return (
+    typeof brief.explanationVersion === "number" &&
+    brief.explanationVersion >= EXPLANATION_COPY_VERSION &&
+    Boolean(brief.summary?.trim()) &&
+    !isBadBriefCopy(brief.summary, brief.headline)
+  );
+}
 
 export const PROMOTIONAL_COPY_PATTERNS = [
   /\bfind winning stocks\b/i,

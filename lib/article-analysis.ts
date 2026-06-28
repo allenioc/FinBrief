@@ -2,6 +2,7 @@ import type { Brief, DataSnapshot, MarketImpact, RelatedAsset, Sentiment } from 
 import { isSecuritiesLegalNotice } from "./story-dedup";
 import { enrichBriefImage } from "./article-image";
 import {
+  EXPLANATION_COPY_VERSION,
   filterStoryAmounts,
   isBadBriefCopy,
   isBrokenCopy,
@@ -11,13 +12,18 @@ import {
   overlapsHeadline,
   polishBriefCopy,
   polishBriefList,
+  resolveProviderExcerpt,
   stripPromotionalCopy,
+  stripSavedExplanationFields,
   stripTruncatedTail,
 } from "./article-brief-quality";
 
 export {
   EXPLANATION_COPY_VERSION,
+  hasTrustedExplanationCopy,
+  resolveProviderExcerpt,
   shouldRebuildBriefCopy,
+  stripSavedExplanationFields,
 } from "./article-brief-quality";
 
 const POSITIVE_WORDS = [
@@ -172,15 +178,13 @@ function textSignalHash(text: string): number {
 }
 
 function buildAnalysisText(
-  brief: Pick<Brief, "headline" | "excerpt" | "summary" | "whatHappened" | "ticker" | "topic" | "source">
+  brief: Pick<Brief, "headline" | "excerpt" | "whatHappened" | "ticker" | "topic" | "source">
 ): string {
+  const excerpt = resolveProviderExcerpt(brief);
   return normalizeWhitespace(
     [
       brief.headline,
-      brief.headline,
-      brief.excerpt,
-      brief.summary,
-      brief.whatHappened,
+      excerpt,
       brief.topic,
       brief.ticker !== "—" ? brief.ticker : "",
       brief.source,
@@ -233,7 +237,7 @@ function inferRelatedAssetType(label: string): RelatedAsset["type"] {
 }
 
 export function inferKeyAffectedAssets(
-  brief: Pick<Brief, "headline" | "excerpt" | "summary" | "whatHappened" | "ticker" | "topic" | "source">,
+  brief: Pick<Brief, "headline" | "excerpt" | "whatHappened" | "ticker" | "topic" | "source">,
   articleType: ReturnType<typeof inferArticleType>,
   financeRelated: boolean
 ): string[] {
@@ -4104,150 +4108,170 @@ export function enrichArticleCopy(brief: Brief): Brief {
       thirtySecondVersion: buildSecuritiesLegalThirtySecond(details),
       whatHappened: buildSecuritiesLegalExcerpt(details, brief.source),
       whyItMatters: buildSecuritiesLegalWhyItMatters(details),
+      explanationVersion: EXPLANATION_COPY_VERSION,
     };
   }
 
+  const sourceBrief = stripSavedExplanationFields(brief);
+  const providerExcerpt = resolveProviderExcerpt(brief);
   const financeRelated = isFinanceRelatedStory(
-    brief.headline,
-    brief.excerpt,
-    brief.ticker,
-    brief.keyAffectedAssets
+    sourceBrief.headline,
+    providerExcerpt,
+    sourceBrief.ticker,
+    sourceBrief.keyAffectedAssets
   );
-  const analysisText = buildAnalysisText(brief);
+  const analysisText = buildAnalysisText({
+    headline: sourceBrief.headline,
+    excerpt: providerExcerpt,
+    whatHappened: providerExcerpt,
+    ticker: sourceBrief.ticker,
+    topic: sourceBrief.topic,
+    source: sourceBrief.source,
+  });
   const articleType = inferArticleType(analysisText);
-  const metadata = deriveArticleMetadata(brief);
-  const entity = extractPrimaryEntity(brief.headline, brief.excerpt) || brief.ticker;
-  const cleanedExcerpt = sanitizeDisplayExcerpt(brief.excerpt, brief.headline);
-  const facts = extractPreviewFacts(brief.headline, cleanedExcerpt);
+  const metadata = deriveArticleMetadata({
+    ...sourceBrief,
+    excerpt: providerExcerpt,
+    whatHappened: providerExcerpt,
+  });
+  const entity = extractPrimaryEntity(sourceBrief.headline, providerExcerpt) || sourceBrief.ticker;
+  const cleanedExcerpt = sanitizeDisplayExcerpt(providerExcerpt, sourceBrief.headline);
+  const facts = extractPreviewFacts(sourceBrief.headline, cleanedExcerpt);
   const ctx = buildArticlePreviewContext(
-    brief.headline,
+    sourceBrief.headline,
     cleanedExcerpt,
-    brief.source,
-    brief.publishedAt
+    sourceBrief.source,
+    sourceBrief.publishedAt
   );
 
   const summary = polishBriefCopy(
     buildFinBriefSummary(
-      brief.headline,
+      sourceBrief.headline,
       cleanedExcerpt,
-      brief.source,
-      brief.publishedAt,
+      sourceBrief.source,
+      sourceBrief.publishedAt,
       financeRelated
     ),
-    brief.headline,
-    buildFinBriefSummary(brief.headline, cleanedExcerpt, brief.source, brief.publishedAt, financeRelated)
+    sourceBrief.headline,
+    buildFinBriefSummary(
+      sourceBrief.headline,
+      cleanedExcerpt,
+      sourceBrief.source,
+      sourceBrief.publishedAt,
+      financeRelated
+    )
   );
   const thirtySecondVersion = polishBriefCopy(
     buildThirtySecondVersion(
-      brief.headline,
+      sourceBrief.headline,
       cleanedExcerpt,
-      brief.source,
-      brief.publishedAt,
+      sourceBrief.source,
+      sourceBrief.publishedAt,
       financeRelated
     ),
-    brief.headline,
+    sourceBrief.headline,
     buildThirtySecondVersion(
-      brief.headline,
+      sourceBrief.headline,
       cleanedExcerpt,
-      brief.source,
-      brief.publishedAt,
+      sourceBrief.source,
+      sourceBrief.publishedAt,
       financeRelated
     )
   );
   const whyItMatters = polishBriefCopy(
     buildWhyItMatters(
-      brief.headline,
+      sourceBrief.headline,
       cleanedExcerpt,
       articleType,
-      brief.source,
-      brief.publishedAt,
-      brief.ticker,
+      sourceBrief.source,
+      sourceBrief.publishedAt,
+      sourceBrief.ticker,
       financeRelated
     ),
-    brief.headline,
+    sourceBrief.headline,
     buildWhyItMatters(
-      brief.headline,
+      sourceBrief.headline,
       cleanedExcerpt,
       articleType,
-      brief.source,
-      brief.publishedAt,
-      brief.ticker,
+      sourceBrief.source,
+      sourceBrief.publishedAt,
+      sourceBrief.ticker,
       financeRelated
     )
   );
   const whoIsAffected = polishBriefCopy(
     buildWhoIsAffected(
-      brief.headline,
+      sourceBrief.headline,
       cleanedExcerpt,
       articleType,
-      brief.source,
-      brief.publishedAt,
-      brief.ticker,
+      sourceBrief.source,
+      sourceBrief.publishedAt,
+      sourceBrief.ticker,
       financeRelated
     ),
-    brief.headline,
+    sourceBrief.headline,
     buildWhoIsAffected(
-      brief.headline,
+      sourceBrief.headline,
       cleanedExcerpt,
       articleType,
-      brief.source,
-      brief.publishedAt,
-      brief.ticker,
+      sourceBrief.source,
+      sourceBrief.publishedAt,
+      sourceBrief.ticker,
       financeRelated
     )
   );
   const bullCase = polishBriefCopy(
     buildBullCase(
-      brief.headline,
+      sourceBrief.headline,
       cleanedExcerpt,
       metadata.sentiment,
       entity,
-      brief.source,
+      sourceBrief.source,
       financeRelated
     ),
-    brief.headline,
+    sourceBrief.headline,
     buildBullCase(
-      brief.headline,
+      sourceBrief.headline,
       cleanedExcerpt,
       metadata.sentiment,
       entity,
-      brief.source,
+      sourceBrief.source,
       financeRelated
     )
   );
   const bearCase = polishBriefCopy(
     buildBearCase(
-      brief.headline,
+      sourceBrief.headline,
       cleanedExcerpt,
       metadata.sentiment,
       entity,
-      brief.source,
+      sourceBrief.source,
       financeRelated
     ),
-    brief.headline,
+    sourceBrief.headline,
     buildBearCase(
-      brief.headline,
+      sourceBrief.headline,
       cleanedExcerpt,
       metadata.sentiment,
       entity,
-      brief.source,
+      sourceBrief.source,
       financeRelated
     )
   );
   const neutralView = polishBriefCopy(
-    buildNeutralView(brief.headline, cleanedExcerpt, entity, brief.source, financeRelated),
-    brief.headline,
-    buildNeutralView(brief.headline, cleanedExcerpt, entity, brief.source, financeRelated)
+    buildNeutralView(sourceBrief.headline, cleanedExcerpt, entity, sourceBrief.source, financeRelated),
+    sourceBrief.headline,
+    buildNeutralView(sourceBrief.headline, cleanedExcerpt, entity, sourceBrief.source, financeRelated)
   );
   const risks = polishBriefList(
-    buildRisks(brief.headline, cleanedExcerpt, entity, financeRelated, facts, ctx),
-    brief.headline,
-    buildRisks(brief.headline, cleanedExcerpt, entity, financeRelated, facts, ctx)
+    buildRisks(sourceBrief.headline, cleanedExcerpt, entity, financeRelated, facts, ctx),
+    sourceBrief.headline,
+    buildRisks(sourceBrief.headline, cleanedExcerpt, entity, financeRelated, facts, ctx)
   );
   const thingsToWatch = polishBriefList(
-    buildThingsToWatch(brief.headline, cleanedExcerpt, entity, financeRelated, facts, ctx),
-    brief.headline,
-    buildThingsToWatch(brief.headline, cleanedExcerpt, entity, financeRelated, facts, ctx)
+    buildThingsToWatch(sourceBrief.headline, cleanedExcerpt, entity, financeRelated, facts, ctx),
+    sourceBrief.headline,
+    buildThingsToWatch(sourceBrief.headline, cleanedExcerpt, entity, financeRelated, facts, ctx)
   );
 
   return {
@@ -4268,6 +4292,7 @@ export function enrichArticleCopy(brief: Brief): Brief {
     marketImpact: metadata.marketImpact,
     keyAffectedAssets: metadata.keyAffectedAssets,
     relatedAssets: metadata.relatedAssets,
+    explanationVersion: EXPLANATION_COPY_VERSION,
   };
 }
 
