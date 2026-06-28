@@ -1,5 +1,5 @@
 /** Bump when Article Brief client-side explanation caches should reset. */
-export const EXPLANATION_COPY_VERSION = 8;
+export const EXPLANATION_COPY_VERSION = 9;
 
 /** Tracks the last Article Brief explanation cache migration applied in this browser. */
 export const EXPLANATION_CACHE_MIGRATION_KEY = "finbrief-explanation-cache-version";
