@@ -4,9 +4,35 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
 import { enrichBrief, stripSavedExplanationFields } from "@/lib/article-analysis";
+import {
+  EXPLANATION_COPY_VERSION,
+  isTrustedExplanationVersion,
+  purgeStaleArticleSessionStorage,
+  purgeStaleExplanationClientStorage,
+} from "@/lib/explanation-cache";
 import { peekDashboardReturnHref } from "@/lib/dashboard-scroll-restore";
 import { ArticleDetail } from "./ArticleDetail";
 import { ArticleBriefFloatingBack } from "./ArticleBriefFloatingBack";
+
+function hydrateBrief(brief: Brief): Brief {
+  return enrichBrief(stripSavedExplanationFields(brief));
+}
+
+function readSessionArticle(id: string): Brief | null {
+  try {
+    const raw = sessionStorage.getItem(`finbrief-article-${id}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Brief;
+    if (!isTrustedExplanationVersion(parsed.explanationVersion)) {
+      sessionStorage.removeItem(`finbrief-article-${id}`);
+      return null;
+    }
+    return parsed;
+  } catch {
+    sessionStorage.removeItem(`finbrief-article-${id}`);
+    return null;
+  }
+}
 
 /**
  * Resolves the clicked article in the browser. Server caches on Vercel are
@@ -22,34 +48,35 @@ export function ArticleBriefClient({
   id: string;
   initialArticle: Brief | null;
 }) {
-  const [article, setArticle] = useState<Brief | null>(() =>
-    initialArticle ? enrichBrief(stripSavedExplanationFields(initialArticle)) : null
-  );
-  const [resolved, setResolved] = useState<boolean>(Boolean(initialArticle));
+  const [article, setArticle] = useState<Brief | null>(null);
+  const [resolved, setResolved] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [id]);
 
   useEffect(() => {
-    if (article) return;
     let cancelled = false;
 
     const finish = (found: Brief | null) => {
       if (cancelled) return;
-      if (found) setArticle(enrichBrief(stripSavedExplanationFields(found)));
+      setArticle(found ? hydrateBrief(found) : null);
       setResolved(true);
     };
 
     const resolve = async () => {
-      try {
-        const stashed = sessionStorage.getItem(`finbrief-article-${id}`);
-        if (stashed) {
-          finish(JSON.parse(stashed) as Brief);
-          return;
-        }
-      } catch {
-        // Ignore storage errors and fall through to the API.
+      purgeStaleExplanationClientStorage();
+      purgeStaleArticleSessionStorage(id);
+
+      const stashed = readSessionArticle(id);
+      if (stashed) {
+        finish(stashed);
+        return;
+      }
+
+      if (initialArticle) {
+        finish(initialArticle);
+        return;
       }
 
       try {
@@ -81,13 +108,14 @@ export function ArticleBriefClient({
       finish(null);
     };
 
-    resolve();
+    setResolved(false);
+    void resolve();
     return () => {
       cancelled = true;
     };
-  }, [article, id]);
+  }, [id, initialArticle]);
 
-  if (!article && !resolved) {
+  if (!resolved) {
     return (
       <p className="fin-panel py-12 text-center text-sm text-fin-subtle">Loading brief…</p>
     );
@@ -120,6 +148,9 @@ export function ArticleBriefClient({
       <div className="mt-6">
         <ArticleDetail article={article} />
       </div>
+      <p className="sr-only" data-explanation-version={EXPLANATION_COPY_VERSION}>
+        Article Brief explanation version {article.explanationVersion ?? "legacy"}
+      </p>
     </div>
   );
 }

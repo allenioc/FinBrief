@@ -8,7 +8,7 @@ import {
 import { providerArticlesToBriefs } from "@/lib/news-normalizer";
 import { BROAD_NEWS_QUERY, DAILY_EDITION_ARTICLE_LIMIT, DAILY_EDITION_REPLACEMENT_MIN, FAILURE_RETRY_COOLDOWN_MS, SUCCESS_FETCH_COOLDOWN_MS } from "@/lib/news-constants";
 import { searchBriefs } from "@/lib/briefs";
-import { enrichBrief } from "@/lib/article-analysis";
+import { enrichBrief, stripSavedExplanationFields } from "@/lib/article-analysis";
 import { countArticlesWithImageUrl } from "@/lib/article-image";
 import { filterBriefsForTopic } from "@/lib/topic-stories";
 import {
@@ -247,8 +247,12 @@ function isAdminRequest(request: NextRequest): { authorized: boolean; note?: str
   return { authorized: provided === secret };
 }
 
+function hydrateCachedBrief(brief: Brief): Brief {
+  return enrichBrief(stripSavedExplanationFields(brief));
+}
+
 function enrichPayloadBriefs(payload: CachedPayload): CachedPayload {
-  const briefs = payload.briefs.map(enrichBrief);
+  const briefs = payload.briefs.map(hydrateCachedBrief);
   const syncFromBrief = <
     T extends {
       imageUrl?: string;
@@ -478,7 +482,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         found: true,
         source: `index:${indexed.tier}`,
-        article: enrichBrief(indexed.value),
+        article: hydrateCachedBrief(indexed.value),
       });
     }
     const broadScope = "broad-business-finance";
@@ -489,7 +493,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
           found: true,
           source: `edition:${record.tier}`,
-          article: enrichBrief(match),
+          article: hydrateCachedBrief(match),
         });
       }
     }
@@ -499,7 +503,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         found: true,
         source: `lastgood:${lastGood.tier}`,
-        article: enrichBrief(staleMatch),
+        article: hydrateCachedBrief(staleMatch),
       });
     }
     return NextResponse.json({ found: false }, { status: 404 });

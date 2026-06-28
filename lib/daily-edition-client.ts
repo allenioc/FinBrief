@@ -1,5 +1,6 @@
 import type { Brief } from "./types";
 import { EXPLANATION_COPY_VERSION } from "./article-brief-quality";
+import { purgeStaleExplanationClientStorage } from "./explanation-cache";
 import { SUMMARY_COPY_VERSION } from "./article-analysis";
 
 export type EditionDataSource = "daily_edition" | "topic_filter" | "cache" | "session_storage";
@@ -67,25 +68,10 @@ export function readEditionSnapshot(): DailyEditionSnapshot | null {
   return readFromStorage();
 }
 
-/** Bootstrap read accepts legacy copy versions so first paint can still show saved stories. */
+/** Bootstrap read rejects legacy snapshots missing the current explanationVersion. */
 export function readBootstrapSnapshot(): DailyEditionSnapshot | null {
-  const trusted = readEditionSnapshot();
-  if (trusted) return trusted;
-
-  if (typeof window === "undefined") return null;
-  try {
-    const key = storageKey(dailyEditionDateKey());
-    const raw = window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as DailyEditionSnapshot;
-    if (parsed.editionDateKey !== dailyEditionDateKey()) return null;
-    if (!Array.isArray(parsed.briefs) || parsed.briefs.length === 0) return null;
-    if (parsed.cacheStatus === "server_hydrate") return null;
-    if (parsed.provider === "mock" || parsed.provider === "error") return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+  purgeStaleExplanationClientStorage();
+  return readEditionSnapshot();
 }
 
 export function writeEditionSnapshot(snapshot: DailyEditionSnapshot): void {

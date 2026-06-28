@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { enrichBrief } from "@/lib/article-analysis";
+import { enrichBrief, stripSavedExplanationFields } from "@/lib/article-analysis";
+import {
+  EXPLANATION_COPY_VERSION,
+  isTrustedExplanationVersion,
+  purgeStaleExplanationClientStorage,
+} from "@/lib/explanation-cache";
 import { formatWeekLabel, weekKeyFromDate, type WeeklyArchivePayload } from "@/lib/weekly-archive";
 import type { Brief } from "@/lib/types";
 
@@ -12,9 +17,15 @@ function readLocalWeekCache(weekKey: string): WeeklyArchivePayload | null {
   try {
     const raw = window.localStorage.getItem(`${WEEKLY_CACHE_PREFIX}::${weekKey}`);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as WeeklyArchivePayload;
-    return parsed.weekKey === weekKey ? parsed : null;
+    const parsed = JSON.parse(raw) as WeeklyArchivePayload & { explanationVersion?: number };
+    if (parsed.weekKey !== weekKey) return null;
+    if (!isTrustedExplanationVersion(parsed.explanationVersion)) {
+      window.localStorage.removeItem(`${WEEKLY_CACHE_PREFIX}::${weekKey}`);
+      return null;
+    }
+    return parsed;
   } catch {
+    window.localStorage.removeItem(`${WEEKLY_CACHE_PREFIX}::${weekKey}`);
     return null;
   }
 }
@@ -22,7 +33,10 @@ function readLocalWeekCache(weekKey: string): WeeklyArchivePayload | null {
 function writeLocalWeekCache(payload: WeeklyArchivePayload): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(`${WEEKLY_CACHE_PREFIX}::${payload.weekKey}`, JSON.stringify(payload));
+    window.localStorage.setItem(
+      `${WEEKLY_CACHE_PREFIX}::${payload.weekKey}`,
+      JSON.stringify({ ...payload, explanationVersion: EXPLANATION_COPY_VERSION })
+    );
   } catch {
     // Storage may be unavailable in private mode.
   }
@@ -54,6 +68,7 @@ export function useWeeklyArchive(enabled: boolean = true) {
     const load = async () => {
       setLoading(true);
       setError(null);
+      purgeStaleExplanationClientStorage();
       const localCache = readLocalWeekCache(weekKey);
 
       try {

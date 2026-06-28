@@ -1,6 +1,8 @@
 import { ArticleBriefClient } from "@/components/ArticleBriefClient";
 import { findArticleLocally } from "@/lib/article-lookup";
 
+export const dynamic = "force-dynamic";
+
 interface BriefPageProps {
   params: Promise<{ id: string }>;
 }
