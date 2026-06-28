@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { AppShell } from "@/components/AppShell";
-import { SmoothScroll } from "@/components/SmoothScroll";
 import { TopBar } from "@/components/TopBar";
 import { WatchlistProvider } from "@/components/WatchlistProvider";
 import { DailyEditionProvider } from "@/components/DailyEditionProvider";
@@ -31,16 +30,14 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="font-sans antialiased">
-        <SmoothScroll>
-          <WatchlistProvider>
-            <DailyEditionProvider>
-              <AppShell>
-                <TopBar />
-                <main className="flex-1">{children}</main>
-              </AppShell>
-            </DailyEditionProvider>
-          </WatchlistProvider>
-        </SmoothScroll>
+        <WatchlistProvider>
+          <DailyEditionProvider>
+            <AppShell>
+              <TopBar />
+              <main className="flex-1">{children}</main>
+            </AppShell>
+          </DailyEditionProvider>
+        </WatchlistProvider>
       </body>
     </html>
   );

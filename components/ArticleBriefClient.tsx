@@ -5,7 +5,6 @@ import Link from "next/link";
 import type { Brief } from "@/lib/types";
 import { enrichBrief } from "@/lib/article-analysis";
 import { peekDashboardReturnHref } from "@/lib/dashboard-scroll-restore";
-import { scrollToTop } from "@/lib/smooth-scroll";
 import { ArticleDetail } from "./ArticleDetail";
 import { ArticleBriefFloatingBack } from "./ArticleBriefFloatingBack";
 
@@ -29,7 +28,7 @@ export function ArticleBriefClient({
   const [resolved, setResolved] = useState<boolean>(Boolean(initialArticle));
 
   useEffect(() => {
-    scrollToTop({ immediate: true });
+    window.scrollTo(0, 0);
   }, [id]);
 
   useEffect(() => {
