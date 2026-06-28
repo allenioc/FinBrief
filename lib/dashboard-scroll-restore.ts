@@ -1,3 +1,5 @@
+import { scrollToY } from "./smooth-scroll";
+
 export const DASHBOARD_SCROLL_KEY = "finbrief-dashboard-scroll";
 
 export type DashboardScrollState = {
@@ -59,7 +61,7 @@ export function restoreDashboardScroll(): boolean {
 
   let attempts = 0;
   const apply = () => {
-    window.scrollTo({ top: state.scrollY, left: 0, behavior: "auto" });
+    scrollToY(state.scrollY, { immediate: true });
     attempts += 1;
     const tallEnough =
       document.documentElement.scrollHeight >= state.scrollY + window.innerHeight * 0.4;
