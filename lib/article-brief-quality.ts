@@ -2,7 +2,7 @@ import type { Brief } from "./types";
 
 /** Shared quality gates for Article Brief explanation copy. */
 
-export const EXPLANATION_COPY_VERSION = 5;
+export const EXPLANATION_COPY_VERSION = 6;
 
 /** Source fields used to regenerate Article Brief explanations. Saved summary/analysis fields are not trusted. */
 export function stripSavedExplanationFields(brief: Brief): Brief {
