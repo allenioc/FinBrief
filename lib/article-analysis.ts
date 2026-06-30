@@ -526,10 +526,14 @@ function polishBriefSection(text: string, fallback = ""): string {
   return cleaned;
 }
 
+function capitalizeSentenceStarts(text: string): string {
+  return text.replace(/(^|[.!?]["']?\s+)([a-z])/g, (_, prefix, letter) => `${prefix}${letter.toUpperCase()}`);
+}
+
 function polishBriefSummary(text: string): string {
   return text
     .split(/\n\n+/)
-    .map((paragraph) => polishBriefSection(paragraph))
+    .map((paragraph) => capitalizeSentenceStarts(polishBriefSection(paragraph)))
     .filter(Boolean)
     .join("\n\n");
 }
