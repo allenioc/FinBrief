@@ -12,6 +12,8 @@ import { ConfidenceScore } from "./ConfidenceScore";
 import { FollowToggleButton } from "./FollowToggleButton";
 import { MarketImpactBadge } from "./MarketImpactBadge";
 import { RecommendedNext } from "./RecommendedNext";
+import { RiskDriverTags } from "./RiskDriverTags";
+import { PotentialMarketImpactBlock } from "./PotentialMarketImpactBlock";
 import { SentimentBadge } from "./SentimentBadge";
 import { TooltipLabel } from "./Tooltip";
 
@@ -158,6 +160,28 @@ export function ArticleDetail({ article }: { article: Brief }) {
 
           <Section title="Why it matters">{enriched.whyItMatters}</Section>
           <Section title="Who is affected?">{enriched.whoIsAffected}</Section>
+
+          {enriched.riskDrivers && enriched.riskDrivers.length > 0 && (
+            <section className="fin-panel">
+              <h2 className="fin-section-title mb-3">Risk drivers</h2>
+              <RiskDriverTags drivers={enriched.riskDrivers} />
+            </section>
+          )}
+
+          {enriched.marketRiskLens && (
+            <Section title="Market risk lens" variant="highlight">
+              {enriched.marketRiskLens}
+            </Section>
+          )}
+
+          {enriched.potentialMarketImpact && (
+            <Section title="Potential market impact">
+              <PotentialMarketImpactBlock impact={enriched.potentialMarketImpact} />
+              <p className="mt-4 text-xs text-fin-subtle">
+                Conceptual risk labels from saved story metadata — not a forecast or trading recommendation.
+              </p>
+            </Section>
+          )}
 
           <div className="space-y-4">
             <h2 className="fin-section-title">Analysis</h2>

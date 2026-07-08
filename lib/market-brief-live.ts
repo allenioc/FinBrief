@@ -1,4 +1,10 @@
 import type { Brief, MarketBriefData, Sentiment } from "./types";
+import {
+  buildInterviewTakeaway,
+  buildPodcastRecap,
+  buildTradingSessionRecap,
+  enrichMarketRisk,
+} from "./market-risk";
 
 function moodLabel(sentiment: Sentiment): string {
   if (sentiment === "positive") return "Risk-on tone";
@@ -41,7 +47,8 @@ function unique<T>(values: T[]): T[] {
 }
 
 export function buildMarketBriefFromBriefs(briefs: Brief[]): MarketBriefData {
-  const ordered = [...briefs].sort(
+  const enriched = briefs.map((brief) => enrichMarketRisk(brief));
+  const ordered = [...enriched].sort(
     (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
   );
   const overallMood = summarizeMood(ordered);
@@ -117,6 +124,9 @@ export function buildMarketBriefFromBriefs(briefs: Brief[]): MarketBriefData {
           ],
     sectorsToWatch,
     indexMoods,
+    interviewTakeaway: buildInterviewTakeaway(ordered),
+    tradingSessionRecap: buildTradingSessionRecap(ordered),
+    podcastRecap: buildPodcastRecap(ordered),
   };
 }
 

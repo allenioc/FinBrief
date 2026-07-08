@@ -1,6 +1,45 @@
 export type Sentiment = "positive" | "neutral" | "negative" | "mixed";
 export type MarketImpact = "low" | "medium" | "high";
 
+export type RiskDriverTag =
+  | "Rates"
+  | "Inflation"
+  | "Central Banks"
+  | "Equities"
+  | "Credit"
+  | "FX"
+  | "Commodities"
+  | "Volatility"
+  | "Banking"
+  | "Geopolitical Risk"
+  | "Earnings"
+  | "Real Estate"
+  | "AI / Technology";
+
+export type ImpactAssessment =
+  | "positive"
+  | "negative"
+  | "mixed"
+  | "higher"
+  | "lower"
+  | "uncertain";
+
+export interface PotentialMarketImpact {
+  equities?: ImpactAssessment;
+  ratesBonds?: ImpactAssessment;
+  fx?: ImpactAssessment;
+  commodities?: ImpactAssessment;
+  volatility?: ImpactAssessment;
+  creditBanking?: ImpactAssessment;
+}
+
+export interface TradingSessionRecapRow {
+  assetClass: string;
+  currentLevel: string | null;
+  whatMoved: string;
+  mainDrivers: string[];
+}
+
 export type ArticleType =
   | "company news"
   | "market news"
@@ -99,6 +138,10 @@ export interface Brief {
   dataSnapshot: DataSnapshot;
   recommendedNext: RecommendedItem[];
   sourceLinks: SourceLink[];
+  /** Market-risk layer — derived at display time from saved story fields. */
+  riskDrivers?: RiskDriverTag[];
+  marketRiskLens?: string | null;
+  potentialMarketImpact?: PotentialMarketImpact | null;
 }
 
 export type WatchlistItemType = "stock" | "etf" | "index" | "sector" | "topic";
@@ -164,4 +207,7 @@ export interface MarketBriefData {
   keyMacroEvents: string[];
   sectorsToWatch: { name: string; reason: string }[];
   indexMoods: IndexMood[];
+  interviewTakeaway: string;
+  tradingSessionRecap: TradingSessionRecapRow[];
+  podcastRecap: string;
 }

@@ -15,6 +15,7 @@ import { AssetTags } from "./AssetTags";
 import { ConfidenceScore } from "./ConfidenceScore";
 import { FollowToggleButton } from "./FollowToggleButton";
 import { MarketImpactBadge } from "./MarketImpactBadge";
+import { RiskDriverTags } from "./RiskDriverTags";
 import { SentimentBadge } from "./SentimentBadge";
 import { TooltipLabel } from "./Tooltip";
 
@@ -158,6 +159,9 @@ function ArticleCardInner({
             <MarketImpactBadge impact={enriched.marketImpact} />
           </div>
           <ConfidenceScore score={enriched.sentimentConfidence} />
+          {enriched.riskDrivers && enriched.riskDrivers.length > 0 && (
+            <RiskDriverTags drivers={enriched.riskDrivers} compact />
+          )}
           <AssetTags assets={enriched.keyAffectedAssets} max={isHero ? 6 : 4} />
         </div>
 

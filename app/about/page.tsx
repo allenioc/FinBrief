@@ -8,7 +8,7 @@ export default function AboutPage() {
       <PageHeader
         eyebrow={BRAND.name}
         title="About FinBrief"
-        description="FinBrief helps you understand business and finance news without wading through jargon or duplicate headlines."
+        description="FinBrief helps you understand market drivers, asset-class moves, and potential risk exposures from saved finance headlines."
       />
 
       <div className="space-y-6 fin-body max-w-2xl text-sm text-fin-text">

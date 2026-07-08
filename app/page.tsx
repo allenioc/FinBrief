@@ -16,10 +16,10 @@ export default async function HomePage({ searchParams }: HomeProps) {
   const params = await searchParams;
   const query = params.q?.trim() ?? "";
   const isTopicView = query.length > 0;
-  const title = isTopicView ? `${query} news feed` : "Understand markets with clarity";
+  const title = isTopicView ? `${query} risk drivers` : "Understand what moved, why it moved, and what risks matter";
   const description = isTopicView
-    ? `Stories for ${query} from this week's saved archive.`
-    : undefined;
+    ? `Saved stories and risk drivers for ${query} from this week's archive.`
+    : "Daily market risk briefings from saved finance headlines — educational context, not investment advice.";
 
   return (
     <div className="mx-auto max-w-shell px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
@@ -39,9 +39,9 @@ export default async function HomePage({ searchParams }: HomeProps) {
           className="fin-panel fin-card-hover flex flex-col gap-3 p-6 sm:flex-row sm:items-center sm:justify-between"
         >
           <div>
-            <p className="fin-label text-fin-brand">Today&apos;s Market Brief</p>
+            <p className="fin-label text-fin-brand">Daily market risk brief</p>
             <p className="mt-2 text-lg font-semibold text-fin-navy">
-              Morning overview · mood, macro events & index snapshot
+              Session recap · risk drivers · asset-class lens
             </p>
           </div>
           <span className="fin-btn-primary shrink-0">Open brief →</span>
@@ -54,7 +54,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
         <div className="mb-6 flex items-center justify-between">
           <h2 className="fin-section-title">Quick Brief</h2>
           <Link href="/market-brief" className="fin-link text-sm">
-            Full market brief →
+            Full daily risk brief →
           </Link>
         </div>
         <Suspense fallback={<div className="fin-panel h-48 animate-pulse rounded-panel bg-fin-muted" />}>

@@ -2,12 +2,12 @@
 
 export const BRAND = {
   name: "FinBrief",
-  tagline: "Market intelligence, explained.",
+  tagline: "Track the drivers behind markets.",
 } as const;
 
 export const PAGE_TITLES: Record<string, string> = {
   "/": "Dashboard",
-  "/market-brief": "Market Brief",
+  "/market-brief": "Daily Market Risk Brief",
   "/watchlist": "Watchlist",
   "/about": "About",
   "/sources": "Sources",
@@ -37,7 +37,7 @@ export const SIDEBAR_NAV: NavSection[] = [
     label: "Main",
     items: [
       { label: "Dashboard", href: "/" },
-      { label: "Market Brief", href: "/market-brief" },
+      { label: "Daily Market Risk Brief", href: "/market-brief" },
       { label: "Watchlist", href: "/watchlist" },
       { label: "About", href: "/about" },
     ],

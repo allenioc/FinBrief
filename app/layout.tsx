@@ -18,9 +18,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FinBrief — AI Finance News Briefings",
+  title: "FinBrief — Daily Market Risk Briefings",
   description:
-    "Understand finance news with quick, educational briefings for stocks, ETFs, and macro topics.",
+    "Track the drivers behind markets with educational risk briefings for equities, rates, FX, commodities, and macro themes.",
 };
 
 export default function RootLayout({

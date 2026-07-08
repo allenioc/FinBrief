@@ -11,9 +11,9 @@ export default async function MarketBriefPage() {
   return (
     <div className="mx-auto max-w-shell px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
       <PageHeader
-        eyebrow="Daily Market Brief"
-        title="Your morning market snapshot"
-        description="Top stories, overall mood, macro events, and index performance from today's edition. Daily market brief updates once per day."
+        eyebrow="Daily market risk brief"
+        title="Market risk recap for today's edition"
+        description="Understand what moved, why it moved, and which risk drivers matter — built from saved daily stories only."
       />
 
       <MarketBriefClient initialData={initialData} />

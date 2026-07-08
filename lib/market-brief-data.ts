@@ -1,4 +1,8 @@
 import type { MarketBriefData } from "./types";
+import { MOCK_BRIEFS } from "./articles-data";
+import { buildInterviewTakeaway, buildPodcastRecap, buildTradingSessionRecap } from "./market-risk";
+
+const mockRecapBriefs = MOCK_BRIEFS.slice(0, 8);
 
 export const MARKET_BRIEF: MarketBriefData = {
   date: "2026-06-04",
@@ -90,4 +94,7 @@ export const MARKET_BRIEF: MarketBriefData = {
       note: "Total market tracking large-cap benchmark with modest breadth",
     },
   ],
+  interviewTakeaway: buildInterviewTakeaway(mockRecapBriefs),
+  tradingSessionRecap: buildTradingSessionRecap(mockRecapBriefs),
+  podcastRecap: buildPodcastRecap(mockRecapBriefs),
 };

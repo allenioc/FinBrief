@@ -80,12 +80,12 @@ export function MarketBriefClient({ initialData }: { initialData: MarketBriefDat
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div>
-          <p className="fin-label text-fin-brand">Daily Market Brief</p>
+          <p className="fin-label text-fin-brand">Daily market risk brief</p>
           <p className="mt-1 text-sm text-fin-subtle" suppressHydrationWarning>
             {formatTodayAt(new Date(meta.lastUpdatedAt))}
           </p>
         </div>
-        <p className="text-xs text-fin-subtle">Daily market brief updates once per day.</p>
+        <p className="text-xs text-fin-subtle">Daily risk brief updates once per day from saved stories.</p>
       </div>
 
       <p className="text-xs text-fin-subtle">

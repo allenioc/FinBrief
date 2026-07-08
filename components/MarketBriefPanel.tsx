@@ -16,7 +16,7 @@ export function MarketBriefPanel({
   return (
     <div className="space-y-8">
       <section className="fin-panel">
-        <p className="fin-label">Daily overview · {data.date}</p>
+        <p className="fin-label">Daily market risk overview · {data.date}</p>
         {updatedLabel && (
           <p className="mt-1 text-sm text-fin-subtle">{updatedLabel}</p>
         )}
@@ -46,7 +46,7 @@ export function MarketBriefPanel({
       </div>
 
       <section className="fin-panel">
-        <h2 className="fin-section-title mb-5">Today&apos;s top 5 finance stories</h2>
+        <h2 className="fin-section-title mb-5">Today&apos;s top risk-driver stories</h2>
         <ol className="space-y-3">
           {data.topStories.map((story, i) => (
             <li
@@ -124,6 +124,48 @@ export function MarketBriefPanel({
             </div>
           ))}
         </div>
+      </section>
+
+      <section className="fin-panel border-l-4 border-l-fin-brand">
+        <h2 className="fin-section-title">Interview takeaway</h2>
+        <p className="mt-4 fin-body text-sm leading-relaxed">{data.interviewTakeaway}</p>
+      </section>
+
+      {data.tradingSessionRecap.length > 0 && (
+        <section className="fin-panel">
+          <h2 className="fin-section-title mb-5">Daily trading session recap</h2>
+          <div className="space-y-4">
+            {data.tradingSessionRecap.map((row) => (
+              <div
+                key={row.assetClass}
+                className="rounded-2xl border border-fin-border bg-fin-muted/30 p-5"
+              >
+                <h3 className="text-base font-bold text-fin-navy">{row.assetClass}</h3>
+                <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+                  <div>
+                    <dt className="fin-label">Current level</dt>
+                    <dd className="mt-1 text-fin-text">{row.currentLevel ?? "Level unavailable"}</dd>
+                  </div>
+                  <div>
+                    <dt className="fin-label">What moved</dt>
+                    <dd className="mt-1 text-fin-text">{row.whatMoved}</dd>
+                  </div>
+                  <div className="sm:col-span-1">
+                    <dt className="fin-label">Main drivers</dt>
+                    <dd className="mt-1 text-fin-text">
+                      {row.mainDrivers.length > 0 ? row.mainDrivers.join(", ") : "—"}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="fin-panel bg-fin-brand-soft/20">
+        <h2 className="fin-section-title">Podcast-style recap</h2>
+        <p className="mt-4 fin-body text-sm leading-relaxed italic text-fin-text">{data.podcastRecap}</p>
       </section>
     </div>
   );
