@@ -17,7 +17,6 @@ export default async function MarketBriefPage() {
       <PageHeader
         eyebrow="Daily Market Risk Brief"
         title={DAILY_BRIEF_TITLE}
-        description="A daily cross-asset summary with live benchmark levels and risk drivers from today's saved headlines."
       />
 
       <MarketBriefClient initialData={initialData} initialSnapshot={snapshot} />

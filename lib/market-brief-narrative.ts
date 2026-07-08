@@ -108,7 +108,64 @@ function formatExposureList(categories: string[]): string {
   return `${categories.slice(0, -1).join(", ")}, and ${categories[categories.length - 1]}`;
 }
 
-/** One polished daily market brief paragraph (3–5 sentences). */
+function buildRiskInterpretationClause(available: MarketBriefAssetRow[]): string {
+  const sp = available.find((asset) => asset.id === "sp500");
+  const nq = available.find((asset) => asset.id === "nasdaq");
+  const tsx = available.find((asset) => asset.id === "tsx");
+  const vix = available.find((asset) => asset.id === "vix");
+
+  if (sp?.direction === "Down" && nq?.direction === "Down") {
+    return ", pointing to weaker risk appetite in U.S. growth and technology shares";
+  }
+  if (sp?.direction === "Up" && nq?.direction === "Up" && tsx?.direction === "Up") {
+    return ", suggesting broad-based risk appetite across major equity benchmarks";
+  }
+  if (tsx?.direction === "Up" && sp?.direction === "Down") {
+    return ", suggesting regional divergence between Canadian and U.S. equity sentiment";
+  }
+  if (vix?.direction === "Up") {
+    return ", with volatility firming as a sign of higher hedging demand";
+  }
+  if (vix?.direction === "Down" && (sp?.direction === "Up" || nq?.direction === "Up")) {
+    return ", with volatility easing alongside firmer equities";
+  }
+  return "";
+}
+
+function buildRatesMonitorSentence(
+  available: MarketBriefAssetRow[],
+  drivers: RiskDriverTag[]
+): string | null {
+  const hasYield = available.some((asset) => asset.id === "us10y" || asset.id === "ca10y");
+  const rateThemes: RiskDriverTag[] = ["Rates", "Inflation", "Central Banks"];
+  const hasRateTheme = drivers.some((driver) => rateThemes.includes(driver));
+  if (!hasYield && !hasRateTheme) return null;
+  return "Rates and duration-sensitive exposures remain important to monitor because shifts in yields can affect bond prices and valuation-sensitive equities.";
+}
+
+function buildSessionTakeawaySentence(available: MarketBriefAssetRow[]): string | null {
+  if (available.length === 0) return null;
+
+  const up = available.filter((asset) => asset.direction === "Up").length;
+  const down = available.filter((asset) => asset.direction === "Down").length;
+  const flat = available.filter((asset) => asset.direction === "Flat").length;
+
+  if (up > 0 && down > 0) {
+    return "The main takeaway is that the session looked uneven rather than broadly risk-on or risk-off.";
+  }
+  if (down > up && down >= flat) {
+    return "The main takeaway is that the session leaned defensive rather than broadly risk-on.";
+  }
+  if (up > down && up >= flat) {
+    return "The main takeaway is that the session leaned risk-on rather than defensive across the available benchmarks.";
+  }
+  if (flat === available.length) {
+    return "The main takeaway is that markets looked quiet with limited directional conviction in the snapshot.";
+  }
+  return "The main takeaway is that cross-asset moves were modest rather than clearly directional.";
+}
+
+/** One polished daily market brief paragraph (5–7 sentences). */
 export function buildSessionRecapParagraph(
   briefs: Brief[],
   assets: MarketBriefAssetRow[]
@@ -123,11 +180,15 @@ export function buildSessionRecapParagraph(
   sentences.push(buildOverallToneSentence(available));
 
   const moveDetail = buildMoveDetailSentence(available);
-  if (moveDetail) sentences.push(moveDetail);
+  if (moveDetail) {
+    const interpretation = buildRiskInterpretationClause(available);
+    sentences.push(`${moveDetail.replace(/\.$/, "")}${interpretation}.`);
+  }
 
   if (drivers.length > 0) {
+    const driverList = drivers.slice(0, 3).join(", ");
     sentences.push(
-      `Related drivers from today's saved stories include ${drivers.slice(0, 3).join(", ")}.`
+      `Today's saved stories suggest ${driverList} ${drivers.length === 1 ? "was" : "were"} the main drivers behind the session narrative.`
     );
   } else if (enriched.length > 0) {
     sentences.push(
@@ -135,15 +196,21 @@ export function buildSessionRecapParagraph(
     );
   }
 
+  const ratesLine = buildRatesMonitorSentence(available, drivers);
+  if (ratesLine) sentences.push(ratesLine);
+
   if (exposures.length > 0) {
     sentences.push(
       `From a market risk perspective, the key exposures to monitor are ${formatExposureList(
-        exposures.slice(0, 3).map((row) => row.category.toLowerCase())
+        exposures.slice(0, 4).map((row) => row.category.toLowerCase())
       )}.`
     );
   }
 
-  return sentences.slice(0, 5).join(" ");
+  const takeaway = buildSessionTakeawaySentence(available);
+  if (takeaway) sentences.push(takeaway);
+
+  return sentences.slice(0, 7).join(" ");
 }
 
 export function buildInterviewTakeaway(
