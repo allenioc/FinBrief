@@ -1,22 +1,25 @@
 import { PageHeader } from "@/components/PageHeader";
 import { MarketBriefClient } from "@/components/MarketBriefClient";
 import { getBriefs } from "@/lib/briefs";
-import { MARKET_BRIEF } from "@/lib/market-brief-data";
 import { buildMarketBriefFromBriefs } from "@/lib/market-brief-live";
+import { getMarketSnapshot } from "@/lib/market-snapshot";
 
 export default async function MarketBriefPage() {
-  const liveBriefs = await getBriefs("");
-  const initialData = liveBriefs.length > 0 ? buildMarketBriefFromBriefs(liveBriefs) : MARKET_BRIEF;
+  const [liveBriefs, snapshot] = await Promise.all([
+    getBriefs(""),
+    getMarketSnapshot().catch(() => null),
+  ]);
+  const initialData = buildMarketBriefFromBriefs(liveBriefs, snapshot);
 
   return (
     <div className="mx-auto max-w-shell px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
       <PageHeader
-        eyebrow="Daily market risk brief"
-        title="Market risk recap for today's edition"
-        description="Understand what moved, why it moved, and which risk drivers matter — built from saved daily stories only."
+        eyebrow="Daily Market Risk Brief"
+        title="Live market snapshot and risk-driver recap"
+        description="Current levels and direction across major benchmarks, linked to today's saved headline drivers."
       />
 
-      <MarketBriefClient initialData={initialData} />
+      <MarketBriefClient initialData={initialData} initialSnapshot={snapshot} />
     </div>
   );
 }

@@ -75,34 +75,11 @@ export function refreshMarketBrief(refreshCount: number): {
   meta: FeedMeta;
 } {
   const rotatedStories = rotateList(MARKET_BRIEF.topStories, refreshCount + 1);
-  const moodVariants: MarketBriefData["overallMood"][] = [
-    "neutral",
-    "positive",
-    "neutral",
-    "negative",
-  ];
-  const mood = moodVariants[refreshCount % moodVariants.length];
-
-  const indexMoods = MARKET_BRIEF.indexMoods.map((idx, i) => {
-    const bump = ((refreshCount + i) % 3) * 0.05 - 0.05;
-    return {
-      ...idx,
-      dailyChangePercent: Number((idx.dailyChangePercent + bump).toFixed(2)),
-    };
-  });
 
   return {
     data: {
       ...MARKET_BRIEF,
       topStories: rotatedStories,
-      overallMood: mood,
-      overallMoodLabel:
-        mood === "positive"
-          ? "Risk-on tone"
-          : mood === "negative"
-            ? "Cautious tone"
-            : "Cautiously balanced",
-      indexMoods,
     },
     meta: {
       lastUpdatedAt: new Date().toISOString(),

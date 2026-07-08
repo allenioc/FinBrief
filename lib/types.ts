@@ -46,6 +46,36 @@ export interface TradingSessionRecapRow {
   mainDrivers: string[];
 }
 
+export type MarketDirection = "Up" | "Down" | "Flat";
+
+export interface MarketBriefAssetRow {
+  id: string;
+  name: string;
+  currentLevel: string;
+  changeAmount: string;
+  changeLabel: string;
+  direction: MarketDirection;
+  available: boolean;
+  mainDrivers: string[];
+}
+
+export interface MarketSnapshotPayload {
+  fetchedAt: string;
+  source: string;
+  quotes: MarketBriefAssetRow[];
+}
+
+export interface RiskExposureRow {
+  category: string;
+  explanation: string;
+}
+
+export interface MarketBriefStory {
+  id: string;
+  title: string;
+  source: string;
+}
+
 export type ArticleType =
   | "company news"
   | "market news"
@@ -195,26 +225,14 @@ export interface BriefResponse {
   provider?: string;
 }
 
-export interface IndexMood {
-  symbol: string;
-  name: string;
-  dailyChangePercent: number;
-  sentiment: Sentiment;
-  note: string;
-}
-
 export interface MarketBriefData {
   date: string;
-  topStories: { id: string; title: string; source: string; sentiment: Sentiment }[];
-  overallMood: Sentiment;
-  overallMoodLabel: string;
-  overallMoodSummary: string;
-  topPositiveTheme: { title: string; description: string };
-  topNegativeTheme: { title: string; description: string };
-  keyMacroEvents: string[];
-  sectorsToWatch: { name: string; reason: string }[];
-  indexMoods: IndexMood[];
+  sessionHeadline: string;
+  sessionRecap: string;
   interviewTakeaway: string;
-  tradingSessionRecap: TradingSessionRecapRow[];
-  podcastRecap: string;
+  keyDrivers: string[];
+  riskExposures: RiskExposureRow[];
+  topStories: MarketBriefStory[];
+  marketAssets: MarketBriefAssetRow[];
+  marketSnapshotFetchedAt: string | null;
 }
