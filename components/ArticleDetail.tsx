@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { Brief } from "@/lib/types";
-import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
 import { enrichBrief, parseThirtySecondBullets } from "@/lib/article-analysis";
 import { formatDateTime } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
@@ -8,15 +7,11 @@ import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
 import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
 import { AssetTags } from "./AssetTags";
-import { ConfidenceScore } from "./ConfidenceScore";
 import { FollowToggleButton } from "./FollowToggleButton";
-import { MarketImpactBadge } from "./MarketImpactBadge";
 import { RecommendedNext } from "./RecommendedNext";
 import { RiskDriverTags } from "./RiskDriverTags";
 import { PotentialMarketImpactBlock } from "./PotentialMarketImpactBlock";
 import { RelevantRiskMeasuresBlock } from "./RelevantRiskMeasuresBlock";
-import { SentimentBadge } from "./SentimentBadge";
-import { TooltipLabel } from "./Tooltip";
 
 function Section({
   title,
@@ -107,18 +102,6 @@ export function ArticleDetail({ article }: { article: Brief }) {
             <div className="mt-5">
               <p className="fin-label mb-2">Related assets</p>
               <AssetTags assets={enriched.keyAffectedAssets} max={8} />
-            </div>
-
-            <div className="mt-6 space-y-3">
-              <div className="flex flex-wrap items-center gap-3 text-xs text-fin-subtle">
-                <TooltipLabel label="Sentiment" content={ANALYSIS_LABEL_TOOLTIPS.sentiment} />
-                <TooltipLabel label="Market impact" content={ANALYSIS_LABEL_TOOLTIPS.marketImpact} />
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <SentimentBadge sentiment={enriched.sentiment} />
-                <MarketImpactBadge impact={enriched.marketImpact} />
-                <ConfidenceScore score={enriched.sentimentConfidence} />
-              </div>
             </div>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
