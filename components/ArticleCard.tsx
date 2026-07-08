@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { memo, useMemo } from "react";
 import type { Brief } from "@/lib/types";
-import { ANALYSIS_LABEL_TOOLTIPS } from "@/lib/analysis-tooltips";
 import { formatDateTime, formatPublishedTimeLabel } from "@/lib/format";
 import { toTopicSlug } from "@/lib/slug";
 import { watchlistItemFromBrief } from "@/lib/watchlist-utils";
@@ -12,12 +11,8 @@ import { saveDashboardScroll } from "@/lib/dashboard-scroll-restore";
 import { ArticleThumbnail } from "./ArticleThumbnail";
 import { ArticleTypeBadge } from "./ArticleTypeBadge";
 import { AssetTags } from "./AssetTags";
-import { ConfidenceScore } from "./ConfidenceScore";
 import { FollowToggleButton } from "./FollowToggleButton";
-import { MarketImpactBadge } from "./MarketImpactBadge";
 import { RiskDriverTags } from "./RiskDriverTags";
-import { SentimentBadge } from "./SentimentBadge";
-import { TooltipLabel } from "./Tooltip";
 
 type ArticleCardProps = {
   article: Brief;
@@ -150,15 +145,6 @@ function ArticleCardInner({
         </p>
 
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-3 text-xs text-fin-subtle">
-            <TooltipLabel label="Sentiment" content={ANALYSIS_LABEL_TOOLTIPS.sentiment} />
-            <TooltipLabel label="Market impact" content={ANALYSIS_LABEL_TOOLTIPS.marketImpact} />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <SentimentBadge sentiment={enriched.sentiment} />
-            <MarketImpactBadge impact={enriched.marketImpact} />
-          </div>
-          <ConfidenceScore score={enriched.sentimentConfidence} />
           {enriched.riskDrivers && enriched.riskDrivers.length > 0 && (
             <RiskDriverTags drivers={enriched.riskDrivers} compact />
           )}
