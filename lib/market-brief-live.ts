@@ -7,10 +7,10 @@ import {
 } from "./market-risk";
 
 function moodLabel(sentiment: Sentiment): string {
-  if (sentiment === "positive") return "Risk-on tone";
-  if (sentiment === "negative") return "Cautious tone";
-  if (sentiment === "mixed") return "Mixed conviction";
-  return "Cautiously balanced";
+  if (sentiment === "positive") return "Risk-on session tone";
+  if (sentiment === "negative") return "Risk-off session tone";
+  if (sentiment === "mixed") return "Mixed cross-asset tone";
+  return "Balanced risk tone";
 }
 
 function summarizeMood(briefs: Brief[]): Sentiment {

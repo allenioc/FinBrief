@@ -10,6 +10,7 @@ const IMPACT_ROWS: { key: keyof PotentialMarketImpact; label: string }[] = [
 ];
 
 function formatAssessment(value: string): string {
+  if (value === "not directly affected") return "Not directly affected";
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 

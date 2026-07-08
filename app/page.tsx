@@ -52,7 +52,7 @@ export default async function HomePage({ searchParams }: HomeProps) {
 
       <section className="mb-12">
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="fin-section-title">Quick Brief</h2>
+          <h2 className="fin-section-title">Today&apos;s risk drivers</h2>
           <Link href="/market-brief" className="fin-link text-sm">
             Full daily risk brief →
           </Link>

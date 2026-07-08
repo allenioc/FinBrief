@@ -2,6 +2,7 @@ import type {
   Brief,
   ImpactAssessment,
   PotentialMarketImpact,
+  RelevantRiskMeasureRow,
   RiskDriverTag,
   TradingSessionRecapRow,
 } from "./types";
@@ -232,7 +233,7 @@ export function buildMarketRiskLens(
   }
   if (drivers.includes("Equities") || drivers.includes("Earnings")) {
     parts.push(
-      `For equity risk, headlines like this one can influence sector beta and earnings expectations${entity ? ` for names such as ${entity}` : ""}. Investors often map the theme to index or single-stock exposure rather than treating it as isolated news flow.`
+      `For equity risk, headlines like this one can influence sector beta and earnings expectations${entity ? ` for names such as ${entity}` : ""}. Risk teams often map the theme to index or single-name exposure rather than treating it as isolated news flow.`
     );
   }
   if (drivers.includes("FX")) {
@@ -310,6 +311,55 @@ export function buildPotentialMarketImpact(
   return Object.keys(impact).length > 0 ? impact : null;
 }
 
+/** Risk measures to monitor — educational labels tied to inferred drivers only. */
+export function buildRelevantRiskMeasures(drivers: RiskDriverTag[]): RelevantRiskMeasureRow[] {
+  if (!isMarketRiskRelevant(drivers)) return [];
+
+  const rows: RelevantRiskMeasureRow[] = [];
+
+  if (drivers.some((d) => ["Equities", "Earnings", "AI / Technology"].includes(d))) {
+    rows.push({
+      category: "Equities",
+      measures: ["Beta", "Sector exposure", "Notional exposure"],
+    });
+  }
+  if (drivers.some((d) => ["Rates", "Inflation", "Central Banks"].includes(d))) {
+    rows.push({
+      category: "Rates/Bonds",
+      measures: ["Duration", "DV01", "Yield curve exposure"],
+    });
+  }
+  if (drivers.includes("FX")) {
+    rows.push({ category: "FX", measures: ["Currency exposure"] });
+  }
+  if (drivers.includes("Commodities")) {
+    rows.push({ category: "Commodities", measures: ["Commodity price exposure"] });
+  }
+  if (drivers.includes("Volatility")) {
+    rows.push({ category: "Options/Volatility", measures: ["Vega", "Gamma", "VaR"] });
+  }
+  if (drivers.some((d) => ["Credit", "Banking"].includes(d))) {
+    rows.push({
+      category: "Credit/Banking",
+      measures: ["Credit spreads", "Funding risk", "Counterparty exposure"],
+    });
+  }
+  if (drivers.includes("Real Estate")) {
+    rows.push({
+      category: "Real Estate",
+      measures: ["Rate sensitivity", "Occupancy and financing exposure"],
+    });
+  }
+  if (drivers.includes("Geopolitical Risk")) {
+    rows.push({
+      category: "Geopolitical",
+      measures: ["Tail-risk premium", "Cross-asset correlation stress"],
+    });
+  }
+
+  return rows;
+}
+
 export function enrichMarketRisk<T extends Brief>(brief: T): T {
   const drivers = inferRiskDrivers(brief);
   return {
@@ -317,6 +367,7 @@ export function enrichMarketRisk<T extends Brief>(brief: T): T {
     riskDrivers: drivers,
     marketRiskLens: buildMarketRiskLens(brief, drivers),
     potentialMarketImpact: buildPotentialMarketImpact(brief, drivers),
+    relevantRiskMeasures: buildRelevantRiskMeasures(drivers),
   };
 }
 
@@ -421,6 +472,24 @@ export function buildTradingSessionRecap(briefs: Brief[]): TradingSessionRecapRo
   return rows;
 }
 
+function monitorListFromDrivers(drivers: string[]): string[] {
+  const monitors: string[] = [];
+  if (drivers.some((d) => ["Rates", "Inflation", "Central Banks"].includes(d))) {
+    monitors.push("duration and DV01");
+  }
+  if (drivers.some((d) => ["Equities", "Earnings", "AI / Technology"].includes(d))) {
+    monitors.push("equity beta and sector exposure");
+  }
+  if (drivers.includes("FX")) monitors.push("currency exposure");
+  if (drivers.includes("Commodities")) monitors.push("commodity price exposure");
+  if (drivers.includes("Volatility")) monitors.push("volatility, vega, and tail-risk");
+  if (drivers.some((d) => ["Credit", "Banking"].includes(d))) {
+    monitors.push("credit spreads and funding conditions");
+  }
+  if (drivers.includes("Geopolitical Risk")) monitors.push("stress-test and correlation assumptions");
+  return monitors.slice(0, 4);
+}
+
 export function buildInterviewTakeaway(briefs: Brief[]): string {
   const enriched = briefs.map((b) => enrichMarketRisk(b));
   if (enriched.length === 0) {
@@ -430,16 +499,17 @@ export function buildInterviewTakeaway(briefs: Brief[]): string {
   const drivers = driverPhrases(enriched);
   const mood = aggregateSentiment(enriched);
   const lead = enriched[0];
+  const monitors = monitorListFromDrivers(drivers);
 
   return [
-    `Today's saved briefing set reads ${formatMoveLabel(mood).toLowerCase()} across the themes that surfaced in the daily edition.`,
+    `What happened: today's saved edition reads ${formatMoveLabel(mood).toLowerCase()} across the themes in the daily risk brief.`,
     drivers.length > 0
-      ? `The main risk drivers in the saved stories include ${drivers.join(", ")}.`
-      : "Risk-driver tags are sparse in today's saved set, so the read is intentionally conservative.",
-    lead
-      ? `A leading headline — "${lead.headline}" — helps anchor what moved narrative attention.`
-      : "",
-    "This is an educational risk-awareness recap from saved FinBrief stories, not a live market quote or investment recommendation.",
+      ? `Why it happened: the main risk drivers in saved stories include ${drivers.join(", ")}${lead ? `, led by reporting on ${lead.topic.toLowerCase()}` : ""}.`
+      : "Why it happened: driver tags are sparse, so the session read stays tied to the headline mix only.",
+    monitors.length > 0
+      ? `What a market risk team would monitor: ${monitors.join(", ")}.`
+      : "What a market risk team would monitor: headline-driven sentiment shifts until more cross-asset tags appear.",
+    "Built from saved FinBrief stories for interview prep — not live prices or trading advice.",
   ]
     .filter(Boolean)
     .join(" ");

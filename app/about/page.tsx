@@ -24,9 +24,9 @@ export default function AboutPage() {
         <section className="fin-panel space-y-3">
           <h2 className="text-lg font-bold text-fin-navy">How editions work</h2>
           <p>
-            The Dashboard and Market Brief update once per day as a single edition. FinBrief
-            organizes the day&apos;s headlines so you can scan what happened, why it may matter, and
-            who could be affected — without refreshing every few minutes.
+            The Dashboard and Daily Market Risk Brief update once per day as a single edition. FinBrief
+            organizes the day&apos;s headlines so you can scan what moved, why it may matter, and
+            which exposures a market risk team would monitor — without refreshing every few minutes.
           </p>
         </section>
 

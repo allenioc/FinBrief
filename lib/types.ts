@@ -22,7 +22,8 @@ export type ImpactAssessment =
   | "mixed"
   | "higher"
   | "lower"
-  | "uncertain";
+  | "uncertain"
+  | "not directly affected";
 
 export interface PotentialMarketImpact {
   equities?: ImpactAssessment;
@@ -31,6 +32,11 @@ export interface PotentialMarketImpact {
   commodities?: ImpactAssessment;
   volatility?: ImpactAssessment;
   creditBanking?: ImpactAssessment;
+}
+
+export interface RelevantRiskMeasureRow {
+  category: string;
+  measures: string[];
 }
 
 export interface TradingSessionRecapRow {
@@ -142,6 +148,7 @@ export interface Brief {
   riskDrivers?: RiskDriverTag[];
   marketRiskLens?: string | null;
   potentialMarketImpact?: PotentialMarketImpact | null;
+  relevantRiskMeasures?: RelevantRiskMeasureRow[];
 }
 
 export type WatchlistItemType = "stock" | "etf" | "index" | "sector" | "topic";

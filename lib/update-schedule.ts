@@ -21,9 +21,9 @@ export interface UpdateScheduleItem {
 export const UPDATE_SCHEDULE: UpdateScheduleItem[] = [
   {
     feed: "market-brief",
-    title: "Market Brief",
-    cadence: "Once every morning (before U.S. market open).",
-    productionNote: "Will be generated from overnight macro and futures data.",
+    title: "Daily Market Risk Brief",
+    cadence: "Once per day from saved finance headlines.",
+    productionNote: "Built from saved daily editions and risk-driver tags — not live market data.",
   },
   {
     feed: "watchlist",

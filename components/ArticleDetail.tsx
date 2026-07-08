@@ -14,6 +14,7 @@ import { MarketImpactBadge } from "./MarketImpactBadge";
 import { RecommendedNext } from "./RecommendedNext";
 import { RiskDriverTags } from "./RiskDriverTags";
 import { PotentialMarketImpactBlock } from "./PotentialMarketImpactBlock";
+import { RelevantRiskMeasuresBlock } from "./RelevantRiskMeasuresBlock";
 import { SentimentBadge } from "./SentimentBadge";
 import { TooltipLabel } from "./Tooltip";
 
@@ -24,18 +25,9 @@ function Section({
 }: {
   title: string;
   children: React.ReactNode;
-  variant?: "default" | "bull" | "bear" | "neutral" | "highlight";
+  variant?: "default" | "highlight";
 }) {
-  const border =
-    variant === "bull"
-      ? "border-l-status-positive"
-      : variant === "bear"
-        ? "border-l-status-negative"
-        : variant === "neutral"
-          ? "border-l-status-neutral"
-          : variant === "highlight"
-            ? "border-l-fin-brand"
-            : "border-l-fin-border-strong";
+  const border = variant === "highlight" ? "border-l-fin-brand" : "border-l-fin-border-strong";
 
   return (
     <section className={`fin-panel border-l-4 ${border}`}>
@@ -52,6 +44,12 @@ export function ArticleDetail({ article }: { article: Brief }) {
   const imageDisplay = enriched.imageDisplay;
   const watchlistItem = watchlistItemFromBrief(article);
   const quickBullets = parseThirtySecondBullets(enriched.thirtySecondVersion);
+  const hasMarketRiskBlock = Boolean(
+    enriched.marketRiskLens ||
+      enriched.potentialMarketImpact ||
+      (enriched.relevantRiskMeasures && enriched.relevantRiskMeasures.length > 0) ||
+      (enriched.riskDrivers && enriched.riskDrivers.length > 0)
+  );
 
   return (
     <div className="space-y-8">
@@ -161,53 +159,67 @@ export function ArticleDetail({ article }: { article: Brief }) {
           <Section title="Why it matters">{enriched.whyItMatters}</Section>
           <Section title="Who is affected?">{enriched.whoIsAffected}</Section>
 
-          {enriched.riskDrivers && enriched.riskDrivers.length > 0 && (
-            <section className="fin-panel">
-              <h2 className="fin-section-title mb-3">Risk drivers</h2>
-              <RiskDriverTags drivers={enriched.riskDrivers} />
-            </section>
-          )}
-
-          {enriched.marketRiskLens && (
-            <Section title="Market risk lens" variant="highlight">
-              {enriched.marketRiskLens}
-            </Section>
-          )}
-
-          {enriched.potentialMarketImpact && (
-            <Section title="Potential market impact">
-              <PotentialMarketImpactBlock impact={enriched.potentialMarketImpact} />
-              <p className="mt-4 text-xs text-fin-subtle">
-                Conceptual risk labels from saved story metadata — not a forecast or trading recommendation.
-              </p>
-            </Section>
-          )}
-
           <div className="space-y-4">
-            <h2 className="fin-section-title">Analysis</h2>
-            <Section title="Bullish interpretation" variant="bull">
-              {enriched.bullCase}
-            </Section>
-            <Section title="Bearish interpretation" variant="bear">
-              {enriched.bearCase}
-            </Section>
-            <Section title="Neutral / uncertain view" variant="neutral">
-              {enriched.neutralView}
-            </Section>
-            <Section title="Key risks">
-              <ul className="list-inside list-disc space-y-2">
-                {article.risks.map((r) => (
-                  <li key={r}>{r}</li>
-                ))}
-              </ul>
-            </Section>
-            <Section title="Things to watch next">
-              <ul className="list-inside list-disc space-y-2">
-                {article.thingsToWatch.map((t) => (
-                  <li key={t}>{t}</li>
-                ))}
-              </ul>
-            </Section>
+            <h2 className="fin-section-title">Market risk briefing</h2>
+
+            {enriched.riskDrivers && enriched.riskDrivers.length > 0 && (
+              <section className="fin-panel">
+                <h3 className="mb-3 text-base font-bold text-fin-navy">Risk drivers</h3>
+                <RiskDriverTags drivers={enriched.riskDrivers} />
+              </section>
+            )}
+
+            {enriched.marketRiskLens ? (
+              <Section title="Market risk lens" variant="highlight">
+                {enriched.marketRiskLens}
+              </Section>
+            ) : hasMarketRiskBlock ? null : (
+              <Section title="Market risk lens">
+                This story has limited cross-asset tags in the saved metadata. Use the summary and
+                monitoring notes below for context rather than inferring exposures not supported by
+                the reporting.
+              </Section>
+            )}
+
+            {enriched.potentialMarketImpact && (
+              <Section title="Potential market impact">
+                <PotentialMarketImpactBlock impact={enriched.potentialMarketImpact} />
+                <p className="mt-4 text-xs text-fin-subtle">
+                  Conceptual risk labels from saved story metadata — not a forecast or trading
+                  recommendation.
+                </p>
+              </Section>
+            )}
+
+            {enriched.relevantRiskMeasures && enriched.relevantRiskMeasures.length > 0 && (
+              <Section title="Relevant risk measures">
+                <RelevantRiskMeasuresBlock rows={enriched.relevantRiskMeasures} />
+                <p className="mt-4 text-xs text-fin-subtle">
+                  Educational measures a market risk team might discuss — not calculated from live
+                  market data.
+                </p>
+              </Section>
+            )}
+
+            {article.risks.length > 0 && (
+              <Section title="Risk factors to monitor">
+                <ul className="list-inside list-disc space-y-2">
+                  {article.risks.map((r) => (
+                    <li key={r}>{r}</li>
+                  ))}
+                </ul>
+              </Section>
+            )}
+
+            {article.thingsToWatch.length > 0 && (
+              <Section title="Monitoring checklist">
+                <ul className="list-inside list-disc space-y-2">
+                  {article.thingsToWatch.map((t) => (
+                    <li key={t}>{t}</li>
+                  ))}
+                </ul>
+              </Section>
+            )}
           </div>
 
           <section className="fin-panel">
