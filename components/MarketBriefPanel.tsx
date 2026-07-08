@@ -81,7 +81,7 @@ export function MarketBriefPanel({
       <div className="grid gap-6 lg:grid-cols-2">
         {data.keyDrivers.length > 0 && (
           <section className="fin-panel">
-            <h2 className="fin-section-title mb-4">Why it moved — headline drivers</h2>
+            <h2 className="fin-section-title mb-4">Why it moved</h2>
             <ul className="space-y-3">
               {data.keyDrivers.map((event) => (
                 <li

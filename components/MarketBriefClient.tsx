@@ -124,7 +124,6 @@ export function MarketBriefClient({
             {formatTodayAt(new Date(meta.lastUpdatedAt))}
           </p>
         </div>
-        <p className="text-xs text-fin-subtle">Headlines refresh daily · market levels refresh about every 20 minutes.</p>
       </div>
 
       <p className="text-xs text-fin-subtle">
