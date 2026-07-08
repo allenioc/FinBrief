@@ -1,7 +1,12 @@
 import type { Brief, MarketBriefAssetRow, MarketDirection, RiskExposureRow, RiskDriverTag } from "./types";
 import { enrichMarketRisk, inferRiskDrivers } from "./market-risk";
 
-function driverPhrases(briefs: Brief[]): string[] {
+export const DAILY_BRIEF_TITLE = "Today's market brief";
+
+const US_EQUITY_IDS = new Set(["sp500", "nasdaq"]);
+const CA_EQUITY_IDS = new Set(["tsx"]);
+
+function driverPhrases(briefs: Brief[]): RiskDriverTag[] {
   const counts = new Map<RiskDriverTag, number>();
   for (const brief of briefs) {
     for (const tag of brief.riskDrivers ?? inferRiskDrivers(brief)) {
@@ -14,14 +19,19 @@ function driverPhrases(briefs: Brief[]): string[] {
     .map(([tag]) => tag);
 }
 
-export function driverPhrasesFromBriefs(briefs: Brief[]): string[] {
-  return driverPhrases(briefs.map((brief) => enrichMarketRisk(brief)));
-}
-
 function firstSentence(text: string): string {
   const trimmed = text.trim();
   const match = trimmed.match(/^[^.!?]+[.!?]?/);
   return (match?.[0] ?? trimmed).trim();
+}
+
+function sanitizeCopy(text: string): string {
+  return text
+    .replace(/\bFinBrief\b/gi, "")
+    .replace(/which stock to buy/gi, "")
+    .replace(/this adds a new layer of detail/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function briefsForDrivers(briefs: Brief[], tags: RiskDriverTag[]): Brief[] {
@@ -31,34 +41,74 @@ function briefsForDrivers(briefs: Brief[], tags: RiskDriverTag[]): Brief[] {
   });
 }
 
-export function buildSessionHeadline(assets: MarketBriefAssetRow[]): string {
-  const available = assets.filter((asset) => asset.available);
-  if (available.length === 0) {
-    return "Market risk session brief";
-  }
-
-  const up = available.filter((asset) => asset.direction === "Up").map((asset) => asset.name);
-  const down = available.filter((asset) => asset.direction === "Down").map((asset) => asset.name);
-
-  if (up.length > 0 && down.length === 0) {
-    return `${up.slice(0, 2).join(" and ")} leading firmer`;
-  }
-  if (down.length > 0 && up.length === 0) {
-    return `${down.slice(0, 2).join(" and ")} under pressure`;
-  }
-  if (up.length > 0 && down.length > 0) {
-    return `Mixed session: ${up[0]} up, ${down[0]} down`;
-  }
-  return "Benchmarks little changed across the snapshot";
+function moveVerb(asset: MarketBriefAssetRow): string {
+  if (asset.direction === "Up") return "rose";
+  if (asset.direction === "Down") return "fell";
+  return "was little changed";
 }
 
-function describeMove(asset: MarketBriefAssetRow): string {
+function formatMoveClause(asset: MarketBriefAssetRow): string {
+  const name = asset.name;
   if (asset.direction === "Flat") {
-    return `${asset.name} was little changed at ${asset.currentLevel}`;
+    return `${name} was little changed at ${asset.currentLevel}`;
   }
-  return `${asset.name} ${asset.direction.toLowerCase()} to ${asset.currentLevel} (${asset.changeLabel})`;
+  const change = asset.changeLabel.replace(/^\+/, "");
+  return `${name} ${moveVerb(asset)} ${change} to ${asset.currentLevel}`;
 }
 
+function buildOverallToneSentence(available: MarketBriefAssetRow[]): string {
+  if (available.length === 0) {
+    return "Cross-asset benchmark data is limited in the current snapshot.";
+  }
+
+  const us = available.filter((asset) => US_EQUITY_IDS.has(asset.id));
+  const tsx = available.find((asset) => asset.id === "tsx");
+  const usDown = us.filter((asset) => asset.direction === "Down").length;
+  const usUp = us.filter((asset) => asset.direction === "Up").length;
+
+  if (usDown > 0 && usUp === 0 && tsx?.direction === "Up") {
+    return "Markets were mixed today, with U.S. equities weaker while Canadian equities finished higher.";
+  }
+  if (usUp > 0 && usDown === 0 && tsx?.direction === "Down") {
+    return "Markets were mixed today, with U.S. equities firmer while Canadian equities lagged.";
+  }
+  if (usDown > usUp) {
+    return "The session leaned risk-off in equities, with more benchmarks lower than higher in the snapshot.";
+  }
+  if (usUp > usDown) {
+    return "The session leaned risk-on in equities, with more benchmarks higher than lower in the snapshot.";
+  }
+
+  const flatCount = available.filter((asset) => asset.direction === "Flat").length;
+  if (flatCount === available.length) {
+    return "Markets were broadly quiet, with major benchmarks little changed in the snapshot.";
+  }
+
+  return "Markets were mixed today across the available benchmark set.";
+}
+
+function buildMoveDetailSentence(available: MarketBriefAssetRow[]): string | null {
+  const priority = ["sp500", "nasdaq", "tsx", "us10y", "vix"];
+  const picked = priority
+    .map((id) => available.find((asset) => asset.id === id))
+    .filter((asset): asset is MarketBriefAssetRow => asset != null)
+    .slice(0, 4);
+
+  if (picked.length === 0) return null;
+
+  const clauses = picked.map(formatMoveClause);
+  if (clauses.length === 1) return `${clauses[0]}.`;
+  if (clauses.length === 2) return `${clauses[0]}, while ${clauses[1]}.`;
+  return `${clauses.slice(0, -1).join(", ")}, while ${clauses[clauses.length - 1]}.`;
+}
+
+function formatExposureList(categories: string[]): string {
+  if (categories.length === 1) return categories[0];
+  if (categories.length === 2) return `${categories[0]} and ${categories[1]}`;
+  return `${categories.slice(0, -1).join(", ")}, and ${categories[categories.length - 1]}`;
+}
+
+/** One polished daily market brief paragraph (3–5 sentences). */
 export function buildSessionRecapParagraph(
   briefs: Brief[],
   assets: MarketBriefAssetRow[]
@@ -66,35 +116,30 @@ export function buildSessionRecapParagraph(
   const enriched = briefs.map((brief) => enrichMarketRisk(brief));
   const drivers = driverPhrases(enriched);
   const available = assets.filter((asset) => asset.available);
-
-  if (enriched.length === 0 && available.length === 0) {
-    return "Market snapshot and saved headline data are still loading for this session.";
-  }
+  const exposures = buildRiskExposures(enriched);
 
   const sentences: string[] = [];
 
-  if (available.length > 0) {
-    const leadMoves = available.slice(0, 3).map(describeMove);
-    sentences.push(`What moved: ${leadMoves.join("; ")}.`);
-  }
+  sentences.push(buildOverallToneSentence(available));
+
+  const moveDetail = buildMoveDetailSentence(available);
+  if (moveDetail) sentences.push(moveDetail);
 
   if (drivers.length > 0) {
-    sentences.push(`Likely drivers from today's saved headlines include ${drivers.slice(0, 3).join(", ")}.`);
-  } else if (enriched[0]) {
-    sentences.push(`The leading saved headline theme is ${enriched[0].topic.toLowerCase()}.`);
-  }
-
-  const exposures = buildRiskExposures(enriched)
-    .slice(0, 2)
-    .map((row) => row.category.toLowerCase());
-  if (exposures.length > 0) {
-    sentences.push(`Exposures to watch: ${exposures.join(" and ")}.`);
-  }
-
-  const lead = enriched[0];
-  if (lead && sentences.length < 5) {
     sentences.push(
-      `Headline anchor: ${firstSentence(lead.headline)} — relevant for ${lead.riskDrivers?.slice(0, 2).join(", ") || "cross-asset risk"}.`
+      `Related drivers from today's saved stories include ${drivers.slice(0, 3).join(", ")}.`
+    );
+  } else if (enriched.length > 0) {
+    sentences.push(
+      "Today's saved headline mix is still building a clearer cross-asset driver set."
+    );
+  }
+
+  if (exposures.length > 0) {
+    sentences.push(
+      `From a market risk perspective, the key exposures to monitor are ${formatExposureList(
+        exposures.slice(0, 3).map((row) => row.category.toLowerCase())
+      )}.`
     );
   }
 
@@ -105,43 +150,65 @@ export function buildInterviewTakeaway(
   briefs: Brief[],
   assets: MarketBriefAssetRow[]
 ): string {
-  const enriched = briefs.map((brief) => enrichMarketRisk(brief));
-  const drivers = driverPhrases(enriched);
-  const available = assets.filter((asset) => asset.available);
-  const monitors = buildRiskExposures(enriched)
+  const recap = buildSessionRecapParagraph(briefs, assets);
+  const drivers = driverPhrases(briefs.map((brief) => enrichMarketRisk(brief))).slice(0, 3);
+  const monitors = buildRiskExposures(briefs.map((brief) => enrichMarketRisk(brief)))
     .slice(0, 3)
     .map((row) => row.category);
 
-  const moveBits =
-    available.length > 0
-      ? available
-          .slice(0, 3)
-          .map((asset) => `${asset.name} ${asset.direction.toLowerCase()}`)
-          .join(", ")
-      : "benchmark levels still loading";
-
-  return [
-    `What happened: ${moveBits}.`,
-    drivers.length > 0
-      ? `Why it happened: saved drivers point to ${drivers.slice(0, 3).join(", ")}.`
-      : "Why it happened: driver tags are still sparse in the saved edition.",
+  const monitorLine =
     monitors.length > 0
-      ? `What a market risk team would monitor: ${monitors.join(", ")}.`
-      : "What a market risk team would monitor: cross-asset beta, rates, and liquidity channels.",
-  ].join(" ");
+      ? `A market risk team would watch ${formatExposureList(monitors.map((m) => m.toLowerCase()))}.`
+      : "A market risk team would watch beta, rates, and liquidity channels.";
+
+  const driverLine =
+    drivers.length > 0
+      ? `Drivers in focus: ${drivers.join(", ")}.`
+      : "Driver tags are still sparse in the saved edition.";
+
+  return `${recap} ${driverLine} ${monitorLine}`;
 }
 
 const EXPOSURE_RULES: {
   category: string;
   tags: RiskDriverTag[];
+  fallback: string;
 }[] = [
-  { category: "Equity beta / sector exposure", tags: ["Equities", "Earnings", "AI / Technology"] },
-  { category: "Duration / DV01", tags: ["Rates", "Inflation", "Central Banks"] },
-  { category: "FX exposure", tags: ["FX"] },
-  { category: "Commodity exposure", tags: ["Commodities", "Geopolitical Risk"] },
-  { category: "Volatility / vega", tags: ["Volatility"] },
-  { category: "Credit spreads / banking exposure", tags: ["Credit", "Banking"] },
-  { category: "Liquidity / funding risk", tags: ["Banking", "Credit"] },
+  {
+    category: "Equity beta / sector exposure",
+    tags: ["Equities", "Earnings", "AI / Technology"],
+    fallback: "Saved equity and earnings stories may shift sector beta and single-name risk.",
+  },
+  {
+    category: "Duration / DV01",
+    tags: ["Rates", "Inflation", "Central Banks"],
+    fallback: "Rates and inflation headlines can affect duration and front-end yield sensitivity.",
+  },
+  {
+    category: "FX exposure",
+    tags: ["FX"],
+    fallback: "Currency-related stories may matter for unhedged FX and translation risk.",
+  },
+  {
+    category: "Commodity exposure",
+    tags: ["Commodities", "Geopolitical Risk"],
+    fallback: "Commodity and geopolitical themes can flow through energy and materials exposure.",
+  },
+  {
+    category: "Volatility / vega",
+    tags: ["Volatility"],
+    fallback: "Volatility-linked headlines may affect hedging demand and tail-risk measures.",
+  },
+  {
+    category: "Credit spreads / banking exposure",
+    tags: ["Credit", "Banking"],
+    fallback: "Credit and banking stories may relate to spread widening and funding conditions.",
+  },
+  {
+    category: "Liquidity / funding risk",
+    tags: ["Banking", "Credit"],
+    fallback: "Banking stress themes can tighten liquidity and funding availability.",
+  },
 ];
 
 export function buildRiskExposures(briefs: Brief[]): RiskExposureRow[] {
@@ -154,20 +221,46 @@ export function buildRiskExposures(briefs: Brief[]): RiskExposureRow[] {
     const matches = briefsForDrivers(enriched, rule.tags);
     if (matches.length === 0) continue;
 
-    const explanation = firstSentence(matches[0].whyItMatters || matches[0].headline);
-    if (!explanation || explanation.length < 12) continue;
+    const fromWhy = sanitizeCopy(firstSentence(matches[0].whyItMatters));
+    const explanation =
+      fromWhy.length >= 24 && fromWhy.length <= 180 && !fromWhy.toLowerCase().includes("finbrief")
+        ? fromWhy
+        : rule.fallback;
 
-    rows.push({
-      category: rule.category,
-      explanation,
-    });
+    rows.push({ category: rule.category, explanation });
     seen.add(rule.category);
   }
 
   return rows.slice(0, 5);
 }
 
-export function summarizeDirections(assets: MarketBriefAssetRow[]): Record<MarketDirection, number> {
+/** 2–4 driver summaries for “Why it moved” — categories, not raw headlines. */
+export function buildWhyItMovedItems(briefs: Brief[]): string[] {
+  const enriched = briefs.map((brief) => enrichMarketRisk(brief));
+  const drivers = driverPhrases(enriched).slice(0, 4);
+
+  if (drivers.length === 0) {
+    return enriched.length > 0
+      ? [
+          "Today's saved edition is still building a clearer driver set across asset classes.",
+        ]
+      : [];
+  }
+
+  return drivers.map((driver) => {
+    const matches = enriched.filter((brief) => brief.riskDrivers?.includes(driver));
+    const topics = [...new Set(matches.map((brief) => brief.topic))].slice(0, 2);
+    const topicPhrase =
+      topics.length > 0
+        ? ` with ${topics.join(" and ").toLowerCase()} coverage in today's edition`
+        : " in today's saved stories";
+    return `${driver} — related drivers from today's stories include this theme${topicPhrase}.`;
+  });
+}
+
+export function summarizeDirections(
+  assets: MarketBriefAssetRow[]
+): Record<MarketDirection, number> {
   return assets.reduce(
     (acc, asset) => {
       if (!asset.available) return acc;
