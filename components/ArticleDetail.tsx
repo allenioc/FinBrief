@@ -166,21 +166,23 @@ export function ArticleDetail({ article }: { article: Brief }) {
 
             {enriched.potentialMarketImpact && (
               <Section title="Potential market impact">
-                <PotentialMarketImpactBlock impact={enriched.potentialMarketImpact} />
-                <p className="mt-4 text-xs text-fin-subtle">
-                  Conceptual risk labels from saved story metadata — not a forecast or trading
-                  recommendation.
+                <p className="mb-4 text-sm text-fin-subtle">
+                  Which asset classes this story may touch, based on its risk drivers and saved
+                  reporting tone. Labels like higher, lower, or mixed describe direction of
+                  pressure — not predicted prices or trade calls.
                 </p>
+                <PotentialMarketImpactBlock impact={enriched.potentialMarketImpact} />
               </Section>
             )}
 
             {enriched.relevantRiskMeasures && enriched.relevantRiskMeasures.length > 0 && (
               <Section title="Relevant risk measures">
-                <RelevantRiskMeasuresBlock rows={enriched.relevantRiskMeasures} />
-                <p className="mt-4 text-xs text-fin-subtle">
-                  Educational measures a market risk team might discuss — not calculated from live
-                  market data.
+                <p className="mb-4 text-sm text-fin-subtle">
+                  The exposure types and risk metrics most tied to this story — for example beta for
+                  equities or DV01 for rates. These name what a market risk team would discuss; they
+                  are not calculated from live market or portfolio data.
                 </p>
+                <RelevantRiskMeasuresBlock rows={enriched.relevantRiskMeasures} />
               </Section>
             )}
 
