@@ -1,5 +1,6 @@
 import type { Brief } from "./types";
 import { SUMMARY_COPY_VERSION } from "./article-analysis";
+import { isEditionFetchedOnDate } from "./daily-edition";
 
 export type EditionDataSource = "daily_edition" | "topic_filter" | "cache" | "session_storage";
 
@@ -32,7 +33,9 @@ export function dailyEditionRequestKey(): string {
 
 export function isTrustedEditionSnapshot(snapshot: DailyEditionSnapshot | null | undefined): boolean {
   if (!snapshot) return false;
-  if (snapshot.editionDateKey !== dailyEditionDateKey()) return false;
+  const today = dailyEditionDateKey();
+  if (snapshot.editionDateKey !== today) return false;
+  if (!isEditionFetchedOnDate(snapshot.fetchedAt, today)) return false;
   if (snapshot.copyVersion !== SUMMARY_COPY_VERSION) return false;
   if (!Array.isArray(snapshot.briefs) || snapshot.briefs.length === 0) return false;
   if (snapshot.cacheStatus === "server_hydrate") return false;

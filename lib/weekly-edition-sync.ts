@@ -1,4 +1,4 @@
-import { isLiveEditionPayload } from "./daily-edition";
+import { dateKeyFromFetchedAt, isLiveEditionPayload } from "./daily-edition";
 import { cacheGet } from "./news-cache";
 import type { Brief } from "./types";
 import { broadEditionCacheKey } from "./weekly-archive";
@@ -10,6 +10,7 @@ type RollingEditionRecord = {
     briefs: Brief[];
     provider?: string;
     articleCount?: number;
+    fetchedAt?: string;
   };
 };
 
@@ -23,7 +24,11 @@ export async function mirrorRollingBroadEditionToWeek(): Promise<void> {
   if (!saved?.value || !isLiveEditionPayload(saved.value.payload)) return;
 
   const { editionDate, payload } = saved.value;
-  if (!editionDate || payload.briefs.length === 0) return;
+  if (payload.briefs.length === 0) return;
 
-  await saveDailyEditionForWeek(editionDate, payload.briefs);
+  const fetchedDay = dateKeyFromFetchedAt(payload.fetchedAt);
+  const bucketDate = fetchedDay ?? editionDate;
+  if (!bucketDate) return;
+
+  await saveDailyEditionForWeek(bucketDate, payload.briefs);
 }

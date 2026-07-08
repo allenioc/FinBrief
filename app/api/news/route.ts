@@ -14,10 +14,13 @@ import { filterBriefsForTopic } from "@/lib/topic-stories";
 import {
   dateKeyFromFetchedAt,
   editionStoryCount,
+  isEditionFetchedOnDate,
+  isFreshSavedEditionForToday,
   isLiveEditionPayload,
   isWithinSuccessFetchCooldown,
   msSinceFetchedAt,
   shouldPersistLiveEditionFetch,
+  shouldPersistNewDayEditionFetch,
 } from "@/lib/daily-edition";
 import { cacheGet, cacheSet, cacheBackendDescription, hasDurableCache } from "@/lib/news-cache";
 import { saveDailyEditionForWeek, syncLiveEditionToWeekArchive, resolveWeeklyEditionDate } from "@/lib/weekly-archive-store";
@@ -131,7 +134,8 @@ async function resolveLastSuccessfulFetchedAt(
   if (
     savedEdition &&
     savedEdition.value.editionDate === today &&
-    savedEdition.value.payload.fetchedAt
+    savedEdition.value.payload.fetchedAt &&
+    isEditionFetchedOnDate(savedEdition.value.payload.fetchedAt, today)
   ) {
     return savedEdition.value.payload.fetchedAt;
   }
@@ -158,7 +162,11 @@ function resolveBestSavedEdition(
 
   if (
     savedEdition &&
-    savedEdition.value.editionDate === today &&
+    isFreshSavedEditionForToday({
+      editionDate: savedEdition.value.editionDate,
+      fetchedAt: savedEdition.value.payload.fetchedAt,
+      today,
+    }) &&
     isLiveEditionPayload(savedEdition.value.payload)
   ) {
     candidates.push({
@@ -220,6 +228,9 @@ async function restoreTodaysEditionIfMissing(
   editionKey: string,
   best: { payload: CachedPayload; fetchedAt: string }
 ): Promise<void> {
+  if (!isFreshSavedEditionForToday({ editionDate: today, fetchedAt: best.fetchedAt, today })) {
+    return;
+  }
   await cacheSet(editionKey, {
     editionDate: today,
     savedAt: new Date().toISOString(),
@@ -320,7 +331,11 @@ async function loadBroadSavedEdition(
   const savedEdition = await cacheGet<EditionRecord>(editionKey);
   if (
     savedEdition &&
-    savedEdition.value.editionDate === today &&
+    isFreshSavedEditionForToday({
+      editionDate: savedEdition.value.editionDate,
+      fetchedAt: savedEdition.value.payload.fetchedAt,
+      today,
+    }) &&
     isLiveEditionPayload(savedEdition.value.payload)
   ) {
     return {
@@ -592,16 +607,25 @@ export async function GET(request: NextRequest) {
     );
     const bestSaved = resolveBestSavedEdition(today, savedEdition, lastGood);
 
-    // 1) Saved live edition for today: serve the strongest cached copy, never touch providers.
+    // 1) Saved live edition for today: serve without providers only when fetched today.
     if (
       savedEdition &&
-      savedEdition.value.editionDate === today &&
+      isFreshSavedEditionForToday({
+        editionDate: savedEdition.value.editionDate,
+        fetchedAt: savedEdition.value.payload.fetchedAt,
+        today,
+      }) &&
       bestSaved &&
       isLiveEditionPayload(bestSaved.payload)
     ) {
       if (
         editionStoryCount(savedEdition.value.payload) < editionStoryCount(bestSaved.payload) &&
-        editionStoryCount(bestSaved.payload) >= DAILY_EDITION_REPLACEMENT_MIN
+        editionStoryCount(bestSaved.payload) >= DAILY_EDITION_REPLACEMENT_MIN &&
+        isFreshSavedEditionForToday({
+          editionDate: today,
+          fetchedAt: bestSaved.fetchedAt,
+          today,
+        })
       ) {
         await restoreTodaysEditionIfMissing(today, editionKey, bestSaved);
       }
@@ -617,9 +641,15 @@ export async function GET(request: NextRequest) {
       ? "no_saved_edition"
       : savedEdition.value.editionDate !== today
         ? "edition_date_changed_and_today_not_fetched_yet"
-        : !isLiveEditionPayload(savedEdition.value.payload)
-          ? "saved_edition_not_live_retry_allowed"
-          : "saved_edition_has_zero_stories";
+        : !isFreshSavedEditionForToday({
+              editionDate: savedEdition.value.editionDate,
+              fetchedAt: savedEdition.value.payload.fetchedAt,
+              today,
+            })
+          ? "saved_edition_stale_needs_today_fetch"
+          : !isLiveEditionPayload(savedEdition.value.payload)
+            ? "saved_edition_not_live_retry_allowed"
+            : "saved_edition_has_zero_stories";
 
     // 2) Recent provider failure: serve the newest saved data instead of retrying.
     if (retryAt > Date.now() && bestSaved) {
@@ -758,9 +788,19 @@ export async function GET(request: NextRequest) {
   const savedEditionForSave = await cacheGet<EditionRecord>(editionKey);
   const lastGoodForSave = await cacheGet<LastGoodRecord>(lastGoodKey);
   const existingStoryCount = resolveExistingEditionStoryCount(savedEditionForSave, lastGoodForSave);
+  const hasFreshSavedEditionForToday = Boolean(
+    savedEditionForSave &&
+      isFreshSavedEditionForToday({
+        editionDate: savedEditionForSave.value.editionDate,
+        fetchedAt: savedEditionForSave.value.payload.fetchedAt,
+        today,
+      })
+  );
   const isSuccessfulLiveFetch = isLiveEditionPayload(payload);
   const shouldSaveLiveEdition =
-    isSuccessfulLiveFetch && shouldPersistLiveEditionFetch(payload, existingStoryCount);
+    isSuccessfulLiveFetch &&
+    (shouldPersistLiveEditionFetch(payload, existingStoryCount) ||
+      shouldPersistNewDayEditionFetch(payload, hasFreshSavedEditionForToday));
 
   let cacheStatus: string;
   let lastSuccessfulFetchedAt: string | null = null;
@@ -804,18 +844,6 @@ export async function GET(request: NextRequest) {
         retryAt: Date.now() + FAILURE_RETRY_COOLDOWN_MS,
         lastSuccessfulFetchedAt:
           existingCooldown?.lastSuccessfulFetchedAt ?? lastGood?.value.fetchedAt ?? undefined,
-      });
-    }
-
-    if (
-      rejectedPartialLiveFetch &&
-      lastGood &&
-      isLiveEditionPayload(lastGood.value.payload) &&
-      editionStoryCount(lastGood.value.payload) >= DAILY_EDITION_REPLACEMENT_MIN
-    ) {
-      await restoreTodaysEditionIfMissing(today, editionKey, {
-        payload: lastGood.value.payload,
-        fetchedAt: lastGood.value.fetchedAt,
       });
     }
 

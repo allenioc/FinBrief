@@ -45,10 +45,18 @@ export function resolveWeeklyEditionDate(
   fetchedAt: string | undefined,
   referenceToday: string
 ): string | null {
+  const fetchedDay = fetchedAt ? dateKeyFromFetchedAt(fetchedAt) : null;
+  if (
+    fetchedDay &&
+    savedEditionDate &&
+    fetchedDay !== savedEditionDate &&
+    isDateKeyInCurrentWeek(fetchedDay)
+  ) {
+    return fetchedDay;
+  }
   if (savedEditionDate && isDateKeyInCurrentWeek(savedEditionDate)) {
     return savedEditionDate;
   }
-  const fetchedDay = fetchedAt ? dateKeyFromFetchedAt(fetchedAt) : null;
   if (fetchedDay && isDateKeyInCurrentWeek(fetchedDay)) {
     return fetchedDay;
   }

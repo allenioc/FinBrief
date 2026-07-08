@@ -14,6 +14,24 @@ export function dateKeyFromFetchedAt(iso: string | null | undefined): string | n
   return `${yyyy}-${mm}-${dd}`;
 }
 
+export function isEditionFetchedOnDate(
+  fetchedAt: string | null | undefined,
+  dateKey: string
+): boolean {
+  return dateKeyFromFetchedAt(fetchedAt) === dateKey;
+}
+
+/** Saved edition counts as today's only when both the edition date and fetch time are today. */
+export function isFreshSavedEditionForToday(input: {
+  editionDate: string;
+  fetchedAt: string | null | undefined;
+  today: string;
+}): boolean {
+  const { editionDate, fetchedAt, today } = input;
+  return editionDate === today && isEditionFetchedOnDate(fetchedAt, today);
+}
+
+
 export function isWithinSuccessFetchCooldown(
   fetchedAt: string | null | undefined,
   todayKey: string
@@ -86,6 +104,24 @@ export function shouldPersistLiveEditionFetch(
   return true;
 }
 
+/**
+ * Daily edition save rule when today does not yet have a fresh live fetch.
+ * Accepts a strong enough fetch even if it is smaller than a prior day's lastGood edition.
+ */
+export function shouldPersistNewDayEditionFetch(
+  incoming: {
+    provider?: string;
+    articleCount?: number;
+    briefs?: { length: number };
+  },
+  hasFreshSavedEditionForToday: boolean,
+  minimum = DAILY_EDITION_REPLACEMENT_MIN
+): boolean {
+  if (hasFreshSavedEditionForToday) return false;
+  const incomingCount = editionStoryCount(incoming);
+  return isLiveEditionProvider(incoming.provider) && incomingCount >= minimum;
+}
+
 export function isFallbackCacheStatus(cacheStatus?: string, provider?: string): boolean {
   if (provider === "mock" || provider === "error") return true;
   if (!cacheStatus) return true;
@@ -117,6 +153,9 @@ export function shouldUpgradeEdition(input: {
   currentProvider?: string;
   nextCacheStatus?: string;
   nextProvider?: string;
+  currentFetchedAt?: string | null;
+  nextFetchedAt?: string | null;
+  todayKey?: string;
 }): boolean {
   const {
     currentBriefIds,
@@ -127,7 +166,21 @@ export function shouldUpgradeEdition(input: {
     currentProvider,
     nextCacheStatus,
     nextProvider,
+    currentFetchedAt,
+    nextFetchedAt,
+    todayKey,
   } = input;
+
+  if (todayKey) {
+    const currentFetchedToday = isEditionFetchedOnDate(currentFetchedAt, todayKey);
+    const nextFetchedToday = isEditionFetchedOnDate(nextFetchedAt, todayKey);
+    if (!currentFetchedToday && nextFetchedToday && nextBriefCount > 0) {
+      return true;
+    }
+    if (currentFetchedToday && !nextFetchedToday) {
+      return false;
+    }
+  }
 
   if (!currentBriefIds) return nextBriefCount >= DAILY_EDITION_REPLACEMENT_MIN || nextBriefCount > 0;
 

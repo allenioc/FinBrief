@@ -23,7 +23,7 @@ import {
   type DailyEditionSnapshot,
   type EditionDataSource,
 } from "@/lib/daily-edition-client";
-import { isLiveEditionProvider, isWithinSuccessFetchCooldown, shouldUpgradeEdition } from "@/lib/daily-edition";
+import { isLiveEditionProvider, isEditionFetchedOnDate, isWithinSuccessFetchCooldown, shouldUpgradeEdition } from "@/lib/daily-edition";
 
 type DailyEditionDebug = {
   source: EditionDataSource;
@@ -184,6 +184,7 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
         cachedSnapshot &&
         cachedSnapshot.briefs.length > 0 &&
         isLiveEditionProvider(cachedSnapshot.provider) &&
+        isEditionFetchedOnDate(cachedSnapshot.fetchedAt, todayKey) &&
         isWithinSuccessFetchCooldown(cachedSnapshot.fetchedAt, todayKey) &&
         (cachedSnapshot.briefs.length >= DAILY_EDITION_REPLACEMENT_MIN ||
           briefsRef.current.length === 0)
@@ -202,7 +203,10 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
         return;
       }
 
-      if (!background && briefsRef.current.length > 0 && bootstrappedRef.current) {
+      const cachedFetchedToday =
+        cachedSnapshot && isEditionFetchedOnDate(cachedSnapshot.fetchedAt, todayKey);
+
+      if (!background && briefsRef.current.length > 0 && bootstrappedRef.current && cachedFetchedToday) {
         setReady(true);
         return;
       }
@@ -251,13 +255,16 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
         const currentSnapshot = memorySnapshot ?? readEditionSnapshot() ?? readBootstrapSnapshot();
         const currentBriefs = currentSnapshot?.briefs ?? briefsRef.current;
         const currentBriefCount = currentBriefs.length;
+        const currentFetchedToday = isEditionFetchedOnDate(currentSnapshot?.fetchedAt, todayKey);
         if (
+          currentFetchedToday &&
           currentBriefCount >= DAILY_EDITION_REPLACEMENT_MIN &&
           apiBriefs.length < DAILY_EDITION_REPLACEMENT_MIN
         ) {
           return;
         }
         if (
+          currentFetchedToday &&
           currentBriefCount >= DAILY_EDITION_REPLACEMENT_MIN &&
           apiBriefs.length < currentBriefCount
         ) {
@@ -278,6 +285,9 @@ export function DailyEditionProvider({ children }: { children: React.ReactNode }
             currentProvider: currentSnapshot.provider,
             nextCacheStatus: payload.cacheStatus,
             nextProvider: payload.provider,
+            currentFetchedAt: currentSnapshot.fetchedAt,
+            nextFetchedAt: payload.fetchedAt,
+            todayKey,
           })
         ) {
           return;
